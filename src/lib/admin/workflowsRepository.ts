@@ -1,0 +1,154 @@
+import type { Edge, Node } from "@xyflow/react";
+
+export type WorkflowGraph = {
+  nodes: Node[];
+  edges: Edge[];
+};
+
+export type WorkflowRow = {
+  id?: string;
+  client_id: string;
+  graph_json?: WorkflowGraph | null;
+  is_active?: boolean | null;
+};
+
+export const WORKFLOW_EXECUTOR_TYPES = [
+  "trigger",
+  "apollo_search",
+  "deepseek_llm",
+  "resend_email",
+] as const;
+
+export type WorkflowExecutorType = (typeof WORKFLOW_EXECUTOR_TYPES)[number];
+
+export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
+  nodes: [
+    {
+      id: "trigger-1",
+      type: "trigger",
+      position: { x: 250, y: 40 },
+      data: {
+        label: "[ TRIGGER ] - Manual / Test Run",
+      },
+    },
+    {
+      id: "apollo-1",
+      type: "apollo_search",
+      position: { x: 250, y: 160 },
+      data: {
+        label: "[ APOLLO ] - Search & Enrich Lead",
+      },
+    },
+    {
+      id: "llm-1",
+      type: "deepseek_llm",
+      position: { x: 250, y: 280 },
+      data: {
+        label: "[ DEEPSEEK ] - Draft Opening Line",
+        prompt:
+          "Write a casual, 2-sentence cold email opening line to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Acknowledge their role and ask if they are currently taking on new clients. Do not include placeholders or signature blocks.",
+      },
+    },
+    {
+      id: "email-1",
+      type: "resend_email",
+      position: { x: 250, y: 400 },
+      data: {
+        label: "[ RESEND ] - Send Safemode Email",
+        to: "{{steps.trigger-1.email}}",
+        subject: "Quick question for {{steps.apollo-1.company}}",
+        body: "{{steps.llm-1.copy}}\n\nLet's chat.\n- Damilare",
+      },
+    },
+  ],
+  edges: [
+    {
+      id: "e-trigger-apollo",
+      source: "trigger-1",
+      target: "apollo-1",
+      animated: true,
+      style: { stroke: "#4b5563" },
+    },
+    {
+      id: "e-apollo-llm",
+      source: "apollo-1",
+      target: "llm-1",
+      animated: true,
+      style: { stroke: "#4b5563" },
+    },
+    {
+      id: "e-llm-email",
+      source: "llm-1",
+      target: "email-1",
+      animated: true,
+      style: { stroke: "#22c55e" },
+    },
+  ],
+};
+
+function readPosition(node: Node): { x: number; y: number } {
+  const pos = node.position;
+  if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
+    return { x: pos.x, y: pos.y };
+  }
+  return { x: 0, y: 0 };
+}
+
+function isExecutorType(type: string | undefined): type is WorkflowExecutorType {
+  return WORKFLOW_EXECUTOR_TYPES.includes(type as WorkflowExecutorType);
+}
+
+export function parseWorkflowGraph(value: unknown): WorkflowGraph | null {
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  const nodes = record.nodes;
+  const edges = record.edges;
+
+  if (!Array.isArray(nodes) || !Array.isArray(edges)) return null;
+
+  return {
+    nodes: normalizeLoadedNodes(nodes),
+    edges: edges as Edge[],
+  };
+}
+
+export function normalizeLoadedNodes(nodes: unknown[]): Node[] {
+  return nodes.map((raw) => {
+    const node = raw as Node;
+    const rawData =
+      typeof node.data === "object" && node.data !== null
+        ? (node.data as Record<string, unknown>)
+        : {};
+
+    const label =
+      typeof rawData.label === "string" ? rawData.label : "Untitled step";
+
+    const type = isExecutorType(node.type) ? node.type : "deepseek_llm";
+
+    return {
+      id: String(node.id),
+      type,
+      position: readPosition(node),
+      data: {
+        ...rawData,
+        label,
+      },
+    };
+  });
+}
+
+export function toEnginePayload(nodes: Node[], edges: Edge[]) {
+  return {
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      data: node.data,
+    })),
+    edges: edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+    })),
+  };
+}

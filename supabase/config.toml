@@ -1,0 +1,15 @@
+# Supabase local config — deploy functions with: supabase functions deploy test-notion
+
+[api]
+enabled = true
+port = 54321
+
+[functions.test-notion]
+verify_jwt = true
+
+# Cal.com server-to-server webhook — no Supabase JWT
+[functions.catch-booking]
+verify_jwt = false
+
+[functions.run-outbound]
+verify_jwt = true
