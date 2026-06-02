@@ -16,6 +16,8 @@ export const WORKFLOW_EXECUTOR_TYPES = [
   "trigger",
   "apollo_search",
   "deepseek_llm",
+  "copy_reviewer",
+  "approval_gate",
   "resend_email",
 ] as const;
 
@@ -37,6 +39,8 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
       position: { x: 250, y: 160 },
       data: {
         label: "[ APOLLO ] - Search & Enrich Lead",
+        location: "United Kingdom",
+        title: "Agency Director, Founder",
       },
     },
     {
@@ -44,20 +48,39 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
       type: "deepseek_llm",
       position: { x: 250, y: 280 },
       data: {
-        label: "[ DEEPSEEK ] - Draft Opening Line",
+        label: "DeepSeek Writer",
         prompt:
           "Write a casual, 2-sentence cold email opening line to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Acknowledge their role and ask if they are currently taking on new clients. Do not include placeholders or signature blocks.",
       },
     },
     {
-      id: "email-1",
-      type: "resend_email",
+      id: "reviewer-1",
+      type: "copy_reviewer",
       position: { x: 250, y: 400 },
       data: {
-        label: "[ RESEND ] - Send Safemode Email",
+        label: "Deliverability Chief",
+        draft: "{{steps.llm-1.copy}}",
+      },
+    },
+    {
+      id: "gate-1",
+      type: "approval_gate",
+      position: { x: 250, y: 520 },
+      data: {
+        label: "Human Review Queue",
+        subject: "Quick question for {{steps.apollo-1.company}}",
+        body: "{{steps.reviewer-1.copy}}",
+      },
+    },
+    {
+      id: "email-1",
+      type: "resend_email",
+      position: { x: 250, y: 640 },
+      data: {
+        label: "Send Email",
         to: "{{steps.trigger-1.email}}",
         subject: "Quick question for {{steps.apollo-1.company}}",
-        body: "{{steps.llm-1.copy}}\n\nLet's chat.\n- Damilare",
+        body: "{{steps.reviewer-1.copy}}",
       },
     },
   ],
@@ -77,8 +100,22 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
       style: { stroke: "#4b5563" },
     },
     {
-      id: "e-llm-email",
+      id: "e-llm-reviewer",
       source: "llm-1",
+      target: "reviewer-1",
+      animated: true,
+      style: { stroke: "#4b5563" },
+    },
+    {
+      id: "e-reviewer-gate",
+      source: "reviewer-1",
+      target: "gate-1",
+      animated: true,
+      style: { stroke: "#4b5563" },
+    },
+    {
+      id: "e-gate-email",
+      source: "gate-1",
       target: "email-1",
       animated: true,
       style: { stroke: "#22c55e" },
@@ -122,7 +159,7 @@ export function normalizeLoadedNodes(nodes: unknown[]): Node[] {
         : {};
 
     const label =
-      typeof rawData.label === "string" ? rawData.label : "Untitled step";
+      typeof rawData.label === "string" ? rawData.label.trim() : "";
 
     const type = isExecutorType(node.type) ? node.type : "deepseek_llm";
 

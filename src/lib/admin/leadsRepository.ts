@@ -1,6 +1,21 @@
 import type { EmailStatus, EnrichmentStatus } from "@/lib/admin/leadScratchpad";
 import type { StagedLead } from "@/lib/admin/leadScratchpad";
 
+export const LEAD_CAMPAIGN_STATUS = {
+  PENDING_REVIEW: "PENDING_REVIEW",
+  SENT: "SENT",
+  DISCARDED: "DISCARDED",
+} as const;
+
+/** Human review queue / outbox — maps to leads.queue_status */
+export const LEAD_QUEUE_STATUS = {
+  PENDING: "pending",
+  SENT: "sent",
+  DISCARDED: "discarded",
+} as const;
+
+export type LeadQueueStatus = (typeof LEAD_QUEUE_STATUS)[keyof typeof LEAD_QUEUE_STATUS];
+
 export type LeadRow = {
   id: string;
   client_id?: string | null;
@@ -11,6 +26,8 @@ export type LeadRow = {
   email?: string | null;
   generated_copy?: string | null;
   campaign_status?: string | null;
+  queue_status?: LeadQueueStatus | string | null;
+  sent_at?: string | null;
   /** @deprecated legacy column */
   company_name?: string | null;
   /** @deprecated legacy column */

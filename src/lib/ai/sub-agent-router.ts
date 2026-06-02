@@ -13,7 +13,7 @@ type SubAgentRow = {
   system_prompt: string;
 };
 
-const COPYWRITER_EXECUTION_RULE = `CRITICAL: You are an execution agent. You have been provided the exact target contact data. Do not attempt to look up or verify the contact. Proceed immediately to drafting the email and calling the save_draft_email tool.`;
+const COPYWRITER_DEPRECATION_RULE = `CRITICAL: The save_draft_email chat bypass is DEPRECATED. You cannot write to the Human Review Queue directly. If asked to draft or queue an email, refuse and tell the CEO to run build_and_run_automation so copy flows through deepseek_llm -> copy_reviewer (Deliverability Chief) -> approval_gate.`;
 
 function isCopywriterAgent(agent: SubAgentRow): boolean {
   const role = agent.role?.trim().toUpperCase();
@@ -28,60 +28,8 @@ function subAgentTools(
 ) {
   const agentId = agent.id;
 
-  const save_draft_email = tool({
-    description:
-      "CRITICAL: Saves a generated cold email draft to the database. You MUST use 'leadEmail', 'subjectLine', and 'emailBody' as the keys.",
-    inputSchema: z.object({
-      leadEmail: z
-        .string()
-        .describe(
-          "The exact email address of the prospect (e.g., sarah@cyberdyne.com). Do NOT use the key 'target'.",
-        ),
-      subjectLine: z.string().describe("The subject line of the email."),
-      emailBody: z.string().describe("The complete body text of the email."),
-    }),
-    execute: async (args) => {
-      await supabase.from("agent_logs").insert({
-        execution_id: executionId,
-        client_id: clientId,
-        agent_id: agentId,
-        event_type: "TOOL_CALL",
-        payload: { tool: "save_draft_email", args },
-      });
-
-      const fullEmail = `Subject: ${args.subjectLine}\n\n${args.emailBody}`;
-
-      const { error } = await supabase.from("leads").upsert(
-        {
-          client_id: clientId,
-          email: args.leadEmail,
-          prospect_name: "Sarah Connor (Simulation)",
-          target_company: "Cyberdyne Systems",
-          generated_copy: fullEmail,
-          campaign_status: "PENDING_REVIEW",
-        },
-        { onConflict: "email,client_id" },
-      );
-
-      if (error) {
-        console.error("Supabase Error:", error);
-        throw new Error(`Database error: ${error.message}`);
-      }
-
-      await supabase.from("agent_logs").insert({
-        execution_id: executionId,
-        client_id: clientId,
-        agent_id: agentId,
-        event_type: "TOOL_RESULT",
-        payload: { status: "SUCCESS", result: "Email saved." },
-      });
-
-      return "Draft successfully saved. Inform the CEO the mission is complete.";
-    },
-  });
-
   if (isCopywriterAgent(agent)) {
-    return { save_draft_email };
+    return {};
   }
 
   return createResearchTools(clientId, executionId, agent.id);
@@ -292,10 +240,7 @@ CRITICAL INSTRUCTION: You are operating strictly on behalf of this client. Base 
 
   let agentSpecificInstructions = "";
   if (isCopywriterAgent(agent)) {
-    agentSpecificInstructions = [
-      COPYWRITER_EXECUTION_RULE,
-      "CRITICAL EXECUTION RULE: When invoking the 'save_draft_email' tool, you MUST use the exact parameter keys: 'leadEmail', 'subjectLine', and 'emailBody'. Do not invent keys like 'target'. Pass the full email draft into the 'emailBody' parameter.",
-    ].join("\n\n");
+    agentSpecificInstructions = COPYWRITER_DEPRECATION_RULE;
   }
 
   await supabase.from("agent_logs").insert({

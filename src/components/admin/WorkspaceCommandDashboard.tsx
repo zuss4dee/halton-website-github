@@ -54,12 +54,12 @@ export function WorkspaceCommandDashboard({ clientId }: WorkspaceCommandDashboar
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId)
-        .eq("campaign_status", "PENDING_REVIEW"),
+        .eq("queue_status", "pending"),
       supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId)
-        .eq("campaign_status", "SENT"),
+        .eq("queue_status", "sent"),
       supabase
         .from("agent_logs")
         .select("*", { count: "exact", head: true })

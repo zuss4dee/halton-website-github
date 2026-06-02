@@ -17,13 +17,23 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type OnSelectionChangeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
   WorkflowExecutionModal,
   type WorkflowRunResult,
 } from "@/components/admin/WorkflowExecutionModal";
+import {
+  buildSidebarPropsFromNode,
+  WorkflowNodeConfigSidebar,
+} from "@/components/admin/WorkflowNodeConfigSidebar";
 import { WorkflowToolNode } from "@/components/admin/WorkflowToolNode";
+import {
+  readWorkflowNodeData,
+  type WorkflowNodeData,
+} from "@/lib/admin/workflowNodeConfig";
+import type { WorkflowExecutorType } from "@/lib/admin/workflowsRepository";
 import {
   DEFAULT_WORKFLOW_GRAPH,
   parseWorkflowGraph,
@@ -59,6 +69,7 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
   const [executionOpen, setExecutionOpen] = useState(false);
   const [executionResult, setExecutionResult] = useState<WorkflowRunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const nodesRef = useRef<Node[]>([]);
   const edgesRef = useRef<Edge[]>([]);
@@ -149,6 +160,7 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
       edgesRef.current = nextEdges;
       setNodes(nextNodes);
       setEdges(nextEdges);
+      setSelectedNodeId(null);
 
       suppressSaveRef.current = true;
       setIsHydrated(true);
@@ -191,6 +203,62 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
     },
     [scheduleSave, setEdges],
   );
+
+  const onSelectionChange = useCallback(({ nodes: selectedNodes }: OnSelectionChangeParams) => {
+    if (selectedNodes.length === 1) {
+      setSelectedNodeId(selectedNodes[0].id);
+      return;
+    }
+    setSelectedNodeId(null);
+  }, []);
+
+  const patchNode = useCallback(
+    (
+      nodeId: string,
+      patch: { type?: WorkflowExecutorType; data?: WorkflowNodeData },
+    ) => {
+      setNodes((current) => {
+        const next = current.map((node) => {
+          if (node.id !== nodeId) return node;
+
+          const nextData = patch.data
+            ? patch.type
+              ? patch.data
+              : { ...readWorkflowNodeData(node.data), ...patch.data }
+            : node.data;
+
+          return {
+            ...node,
+            ...(patch.type ? { type: patch.type } : {}),
+            ...(patch.data ? { data: nextData } : {}),
+          };
+        });
+        nodesRef.current = next;
+        return next;
+      });
+      scheduleSave();
+    },
+    [scheduleSave, setNodes],
+  );
+
+  const deleteSelectedNode = useCallback(() => {
+    if (!selectedNodeId) return;
+
+    setNodes((current) => {
+      const next = current.filter((node) => node.id !== selectedNodeId);
+      nodesRef.current = next;
+      return next;
+    });
+    setEdges((current) => {
+      const next = current.filter(
+        (edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId,
+      );
+      edgesRef.current = next;
+      return next;
+    });
+    setSelectedNodeId(null);
+    scheduleSave();
+  }, [scheduleSave, selectedNodeId, setEdges, setNodes]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -251,6 +319,17 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
     setIsRunning(true);
     setRunError(null);
     setExecutionResult(null);
+    setNodes((current) => {
+      const next = current.map((node) => ({
+        ...node,
+        data: {
+          ...(readWorkflowNodeData(node.data) as Record<string, unknown>),
+          runtimeStatus: "idle",
+        },
+      }));
+      nodesRef.current = next;
+      return next;
+    });
 
     const { nodes: engineNodes, edges: engineEdges } = toEnginePayload(
       nodesRef.current,
@@ -289,6 +368,61 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
     }
   }, []);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`workflow-step-events-${clientId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "agent_logs",
+          filter: `client_id=eq.${clientId}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            event_type?: string;
+            payload?: { nodeId?: string };
+          };
+          const eventType = row.event_type;
+          const nodeId = row.payload?.nodeId;
+          if (!nodeId) return;
+          if (eventType !== "STEP_START" && eventType !== "STEP_COMPLETE") return;
+
+          const runtimeStatus = eventType === "STEP_START" ? "running" : "complete";
+
+          setNodes((current) => {
+            let changed = false;
+            const next = current.map((node) => {
+              if (node.id !== nodeId) return node;
+              changed = true;
+              return {
+                ...node,
+                data: {
+                  ...(readWorkflowNodeData(node.data) as Record<string, unknown>),
+                  runtimeStatus,
+                },
+              };
+            });
+            if (!changed) return current;
+            nodesRef.current = next;
+            return next;
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [clientId, setNodes]);
+
+  const selectedNode = selectedNodeId
+    ? nodes.find((node) => node.id === selectedNodeId)
+    : undefined;
+
+  const sidebarProps = selectedNode ? buildSidebarPropsFromNode(selectedNode) : null;
+
   return (
     <div className="flex h-[800px] w-full flex-col bg-black font-mono">
       <div className="border-b border-gray-800 p-4">
@@ -311,7 +445,8 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
           </p>
         ) : null}
       </div>
-      <div className="relative w-full flex-1">
+      <div className="flex min-h-0 w-full flex-1">
+        <div className="relative min-w-0 flex-1">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -319,6 +454,7 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
+          onSelectionChange={onSelectionChange}
           nodesConnectable
           edgesReconnectable
           elementsSelectable
@@ -365,6 +501,18 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
               [ EXECUTING_DAG... ]
             </p>
           </div>
+        ) : null}
+        </div>
+
+        {sidebarProps ? (
+          <WorkflowNodeConfigSidebar
+            key={sidebarProps.nodeId}
+            nodeId={sidebarProps.nodeId}
+            nodeType={sidebarProps.nodeType}
+            nodeData={sidebarProps.nodeData}
+            onPatch={(patch) => patchNode(sidebarProps.nodeId, patch)}
+            onDelete={deleteSelectedNode}
+          />
         ) : null}
       </div>
 

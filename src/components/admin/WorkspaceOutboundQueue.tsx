@@ -1,13 +1,74 @@
 import { Link } from "@tanstack/react-router";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { LeadRow } from "@/lib/admin/leadsRepository";
+import {
+  LEAD_CAMPAIGN_STATUS,
+  LEAD_QUEUE_STATUS,
+  type LeadRow,
+} from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
 type WorkspaceOutboundQueueProps = {
   clientId: string;
 };
 
+/** Alias for workspace human review queue & outbox */
+export type HumanReviewQueueProps = WorkspaceOutboundQueueProps;
+export function HumanReviewQueue(props: WorkspaceOutboundQueueProps) {
+  return <WorkspaceOutboundQueue {...props} />;
+}
+
+type QueueTab = "pending" | "sent";
+
+function formatSentLabel(value: string | null | undefined, fallback?: string | null) {
+  const raw = value ?? fallback;
+  if (!raw) return "—";
+
+  try {
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return "—";
+
+    const month = date.toLocaleString("en-US", { month: "long" });
+    const day = date.getDate();
+    const time = date.toLocaleString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    return `${month} ${day} at ${time}`;
+  } catch {
+    return "—";
+  }
+}
+
+function QueueTabButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`border px-4 py-2 font-mono text-[10px] tracking-[0.16em] uppercase transition-colors ${
+        active
+          ? "border-ink bg-ink text-paper"
+          : "border-hairline bg-paper text-ink-soft hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps) {
+  const workspaceClientId = clientId.trim();
+
+  const [activeTab, setActiveTab] = useState<QueueTab>("pending");
   const [queue, setQueue] = useState<LeadRow[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
   const [editedCopy, setEditedCopy] = useState("");
@@ -15,28 +76,52 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  const isSentTab = activeTab === "sent";
+
   const fetchQueue = useCallback(async () => {
+    if (!workspaceClientId) {
+      setQueue([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
 
-    const { data, error } = await supabase
+    const queueStatus =
+      activeTab === "pending" ? LEAD_QUEUE_STATUS.PENDING : LEAD_QUEUE_STATUS.SENT;
+
+    let query = supabase
       .from("leads")
       .select("*")
-      .eq("client_id", clientId)
-      .eq("campaign_status", "PENDING_REVIEW");
+      .eq("client_id", workspaceClientId)
+      .eq("queue_status", queueStatus);
+
+    query =
+      activeTab === "sent"
+        ? query.order("sent_at", { ascending: false, nullsFirst: false })
+        : query.order("created_at", { ascending: false });
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("OUTBOUND QUEUE FETCH ERROR:", error);
       setQueue([]);
-    } else if (data) {
-      setQueue(data as LeadRow[]);
+    } else {
+      const rows = (data ?? []) as LeadRow[];
+      setQueue(rows.filter((row) => row.client_id === workspaceClientId));
     }
 
     setIsLoading(false);
-  }, [clientId]);
+  }, [activeTab, workspaceClientId]);
 
   useEffect(() => {
     void fetchQueue();
   }, [fetchQueue]);
+
+  useEffect(() => {
+    setSelectedLead(null);
+    setEditedCopy("");
+  }, [activeTab]);
 
   useEffect(() => {
     setEditedCopy(selectedLead?.generated_copy ?? "");
@@ -49,18 +134,26 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
   }, [statusMessage]);
 
   const handleApprove = async () => {
-    if (!selectedLead?.id || isSubmitting) return;
+    if (!selectedLead?.id || isSubmitting || isSentTab || !workspaceClientId) return;
+    if (selectedLead.client_id && selectedLead.client_id !== workspaceClientId) {
+      console.error("WORKSPACE_ISOLATION: lead client_id mismatch");
+      return;
+    }
 
     setIsSubmitting(true);
+
+    const sentAt = new Date().toISOString();
 
     const { error } = await supabase
       .from("leads")
       .update({
-        campaign_status: "SENT",
+        queue_status: LEAD_QUEUE_STATUS.SENT,
+        campaign_status: LEAD_CAMPAIGN_STATUS.SENT,
         generated_copy: editedCopy,
+        sent_at: sentAt,
       })
       .eq("id", selectedLead.id)
-      .eq("client_id", clientId);
+      .eq("client_id", workspaceClientId);
 
     if (error) {
       console.error("APPROVE SEND ERROR:", error);
@@ -68,27 +161,32 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
       return;
     }
 
-    setQueue((prev) => prev.filter((lead) => lead.id !== selectedLead.id));
     setSelectedLead(null);
     setEditedCopy("");
-    setStatusMessage("> SYSTEM: SIMULATED SEND SUCCESSFUL");
-    console.info("> SYSTEM: SIMULATED SEND SUCCESSFUL");
+    setStatusMessage("> SYSTEM: SENT — RECORD ARCHIVED TO OUTBOX");
+    await fetchQueue();
     setIsSubmitting(false);
   };
 
   const handleDiscard = async () => {
-    if (!selectedLead?.id || isSubmitting) return;
+    if (!selectedLead?.id || isSubmitting || isSentTab || !workspaceClientId) return;
+    if (selectedLead.client_id && selectedLead.client_id !== workspaceClientId) {
+      console.error("WORKSPACE_ISOLATION: lead client_id mismatch");
+      return;
+    }
 
     setIsSubmitting(true);
 
     const { error } = await supabase
       .from("leads")
       .update({
-        campaign_status: "DISCARDED",
+        queue_status: LEAD_QUEUE_STATUS.DISCARDED,
+        campaign_status: LEAD_CAMPAIGN_STATUS.DISCARDED,
         generated_copy: null,
+        sent_at: null,
       })
       .eq("id", selectedLead.id)
-      .eq("client_id", clientId);
+      .eq("client_id", workspaceClientId);
 
     if (error) {
       console.error("DISCARD DRAFT ERROR:", error);
@@ -96,18 +194,24 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
       return;
     }
 
-    setQueue((prev) => prev.filter((lead) => lead.id !== selectedLead.id));
     setSelectedLead(null);
     setEditedCopy("");
+    await fetchQueue();
     setIsSubmitting(false);
   };
+
+  const listHeading = isSentTab ? "01 // SENT_HISTORY" : "01 // PENDING_TARGETS";
+  const editorHeading = isSentTab ? "02 // SENT_COPY" : "02 // DRAFT_EDITOR";
+  const emptyListCopy = isSentTab
+    ? "OUTBOX_EMPTY // NO_SENT_CAMPAIGNS"
+    : "QUEUE_EMPTY // NO_DRAFTS_PENDING";
 
   return (
     <section className="flex min-h-[60vh] flex-col">
       <header className="border-b border-hairline pb-8 md:pb-10">
         <Link
           to="/admin/client/$id/orchestration"
-          params={{ id: clientId }}
+          params={{ id: workspaceClientId }}
           className="mb-6 inline-block font-mono text-[11px] tracking-[0.16em] uppercase text-ink-soft transition-colors hover:text-ink"
         >
           &lt; RETURN_TO_ORCHESTRATION
@@ -117,20 +221,36 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
           OUTBOUND_QUEUE // HUMAN_REVIEW
         </h1>
         <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-          APPROVAL_LAYER // AI_DRAFTS_PENDING_RELEASE
+          WORKSPACE_SCOPED // {workspaceClientId || "NO_CLIENT"}
+        </p>
+        <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft/80">
+          {isSentTab ? "OUTBOX_LAYER // DEPLOYED_CAMPAIGN_HISTORY" : "APPROVAL_LAYER // AI_DRAFTS_PENDING_RELEASE"}
         </p>
       </header>
 
-      {statusMessage && (
+      <div className="mt-6 flex flex-wrap gap-2">
+        <QueueTabButton
+          active={activeTab === "pending"}
+          label="Pending Approval"
+          onClick={() => setActiveTab("pending")}
+        />
+        <QueueTabButton
+          active={activeTab === "sent"}
+          label="Sent History"
+          onClick={() => setActiveTab("sent")}
+        />
+      </div>
+
+      {statusMessage ? (
         <div className="mt-6 border border-green-800 bg-green-950/30 px-4 py-3 font-mono text-xs tracking-[0.12em] text-green-400">
           {statusMessage}
         </div>
-      )}
+      ) : null}
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-4">
           <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            01 // PENDING_TARGETS
+            {listHeading}
           </h2>
 
           <div className="space-y-2 border border-hairline p-2">
@@ -140,13 +260,14 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
               </div>
             ) : queue.length === 0 ? (
               <div className="px-3 py-6 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-                QUEUE_EMPTY // NO_DRAFTS_PENDING
+                {emptyListCopy}
               </div>
             ) : (
               queue.map((lead) => {
                 const isSelected = selectedLead?.id === lead.id;
                 const name = lead.prospect_name?.trim() || "Unknown Prospect";
                 const company = lead.target_company?.trim() || "—";
+                const sentLabel = formatSentLabel(lead.sent_at, lead.created_at);
 
                 return (
                   <button
@@ -166,10 +287,23 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
                           {company}
                         </div>
                       </div>
-                      <span className="shrink-0 bg-yellow-400 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-black">
-                        [PENDING]
-                      </span>
+                      {isSentTab ? (
+                        <Check
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500/90"
+                          strokeWidth={2.5}
+                          aria-hidden
+                        />
+                      ) : (
+                        <span className="shrink-0 bg-yellow-400 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-black">
+                          [PENDING]
+                        </span>
+                      )}
                     </div>
+                    {isSentTab ? (
+                      <p className="mt-2 font-mono text-[9px] tracking-[0.08em] text-gray-600">
+                        Sent on {sentLabel}
+                      </p>
+                    ) : null}
                   </button>
                 );
               })
@@ -179,7 +313,7 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
 
         <div className="lg:col-span-8">
           <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            02 // DRAFT_EDITOR
+            {editorHeading}
           </h2>
 
           {!selectedLead ? (
@@ -196,27 +330,39 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
               <textarea
                 value={editedCopy}
                 onChange={(e) => setEditedCopy(e.target.value)}
-                className="h-96 w-full resize-y border border-gray-800 bg-black p-4 font-mono text-xs leading-relaxed text-gray-300 focus:border-gray-600 focus:outline-none"
+                readOnly={isSentTab}
+                className={`h-96 w-full resize-y border border-gray-800 bg-black p-4 font-mono text-xs leading-relaxed focus:outline-none ${
+                  isSentTab
+                    ? "cursor-default text-gray-400"
+                    : "text-gray-300 focus:border-gray-600"
+                }`}
               />
 
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => void handleDiscard()}
-                  disabled={isSubmitting}
-                  className="rounded-none border border-gray-800 px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
-                >
-                  [ DISCARD_DRAFT ]
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleApprove()}
-                  disabled={isSubmitting}
-                  className="rounded-none border border-green-700 bg-green-900/40 px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-green-300 transition-colors hover:bg-green-800/60 hover:text-green-200 disabled:opacity-40"
-                >
-                  [ APPROVE_AND_SEND ]
-                </button>
-              </div>
+              {isSentTab ? (
+                <div className="flex items-center gap-2 border border-gray-800 bg-black px-4 py-3 font-mono text-[10px] tracking-[0.08em] text-gray-500">
+                  <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500/90" strokeWidth={2.5} aria-hidden />
+                  <span>Sent on {formatSentLabel(selectedLead.sent_at, selectedLead.created_at)}</span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleDiscard()}
+                    disabled={isSubmitting}
+                    className="rounded-none border border-gray-800 px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                  >
+                    [ DISCARD_DRAFT ]
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleApprove()}
+                    disabled={isSubmitting}
+                    className="rounded-none border border-green-700 bg-green-900/40 px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-green-300 transition-colors hover:bg-green-800/60 hover:text-green-200 disabled:opacity-40"
+                  >
+                    [ APPROVE_AND_SEND ]
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

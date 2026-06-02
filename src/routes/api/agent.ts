@@ -6,9 +6,19 @@ export const Route = createFileRoute("/api/agent")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        let body: { command?: string; clientId?: string };
+        let body: {
+          command?: string;
+          clientId?: string;
+          replyContext?: {
+            logId: string;
+            agentLabel: string;
+            eventType: string;
+            quotedText: string;
+            createdAt?: string;
+          };
+        };
         try {
-          body = (await request.json()) as { command?: string; clientId?: string };
+          body = (await request.json()) as typeof body;
         } catch {
           return Response.json({ error: "Invalid JSON body." }, { status: 400 });
         }
@@ -29,11 +39,16 @@ export const Route = createFileRoute("/api/agent")({
         const stream = new ReadableStream({
           async start(controller) {
             try {
-              const result = await executeCEOCommand(command, clientId, (executionId) => {
-                controller.enqueue(
-                  encoder.encode(`${JSON.stringify({ executionId })}\n`),
-                );
-              });
+              const result = await executeCEOCommand(
+                command,
+                clientId,
+                (executionId) => {
+                  controller.enqueue(
+                    encoder.encode(`${JSON.stringify({ executionId })}\n`),
+                  );
+                },
+                body.replyContext,
+              );
 
               controller.enqueue(encoder.encode(`${JSON.stringify({ text: result.text })}\n`));
               controller.close();
