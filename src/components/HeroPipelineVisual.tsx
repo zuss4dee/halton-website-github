@@ -12,7 +12,11 @@ const stages = [
 
 const flowPath = `M ${PIPELINE_X} ${stages[0].y} L ${PIPELINE_X} ${stages[stages.length - 1].y}`;
 
-export function HeroPipelineVisual() {
+type HeroPipelineVisualProps = {
+  compact?: boolean;
+};
+
+export function HeroPipelineVisual({ compact = false }: HeroPipelineVisualProps) {
   const [meetingsBooked, setMeetingsBooked] = useState(0);
 
   useEffect(() => {
@@ -30,10 +34,14 @@ export function HeroPipelineVisual() {
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 1, delay: 0.85, ease: [0.22, 1, 0.36, 1] }}
-      className="relative ml-auto w-full max-w-[380px]"
+      className={`relative w-full ${compact ? "max-w-none mx-0" : "ml-auto max-w-[380px]"}`}
       aria-hidden
     >
-      <div className="relative flex min-h-[400px] flex-col border border-hairline bg-paper noise">
+      <div
+        className={`relative flex flex-col border border-hairline bg-paper noise ${
+          compact ? "min-h-[300px]" : "min-h-[400px]"
+        }`}
+      >
         {[
           "top-0 left-0",
           "top-0 right-0",
@@ -57,11 +65,11 @@ export function HeroPipelineVisual() {
           Live · booking.flow
         </div>
 
-        <div className="relative min-h-0 flex-1 px-3 pb-2">
+        <div className={`relative min-h-0 flex-1 px-3 pb-2 ${compact ? "min-h-[180px]" : ""}`}>
           <svg
             viewBox="0 0 360 252"
             preserveAspectRatio="xMidYMid meet"
-            className="h-full w-full text-ink"
+            className="h-full w-full min-h-[160px] text-ink"
           >
             <motion.path
               d={flowPath}
@@ -95,7 +103,7 @@ export function HeroPipelineVisual() {
                   textAnchor="end"
                   className="fill-current"
                   style={{
-                    font: "9px ui-monospace, monospace",
+                    font: compact ? "10px ui-monospace, monospace" : "9px ui-monospace, monospace",
                     letterSpacing: "0.12em",
                     opacity: 0.45,
                   }}
@@ -106,7 +114,10 @@ export function HeroPipelineVisual() {
                   x="204"
                   y={stage.y + 4}
                   className="fill-current"
-                  style={{ font: "9px ui-monospace, monospace", letterSpacing: "0.1em" }}
+                  style={{
+                    font: compact ? "10px ui-monospace, monospace" : "9px ui-monospace, monospace",
+                    letterSpacing: "0.1em",
+                  }}
                 >
                   {stage.label.toUpperCase()}
                 </text>
@@ -135,7 +146,9 @@ export function HeroPipelineVisual() {
             Meetings booked · 7d
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-display text-3xl tracking-[-0.04em] text-ink">{meetingsBooked}</span>
+            <span className={`font-display tracking-[-0.04em] text-ink ${compact ? "text-2xl" : "text-3xl"}`}>
+              {meetingsBooked}
+            </span>
             <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-soft">qualified</span>
           </div>
         </div>

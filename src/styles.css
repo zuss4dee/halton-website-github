@@ -123,6 +123,31 @@
     text-wrap: balance;
   }
 
+  .hero-headline {
+    font-size: clamp(2.5rem, 10.5vw, 12rem);
+  }
+
+  @media (min-width: 640px) {
+    .hero-headline {
+      font-size: clamp(3rem, 11vw, 12rem);
+    }
+  }
+
+  @media (min-width: 768px) {
+    .hero-headline {
+      font-size: clamp(3.5rem, 12vw, 12rem);
+    }
+  }
+
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  a.touch-target:not(.cta) {
+    min-width: auto;
+  }
+
   /* Marker label */
   .eyebrow {
     font-family: var(--font-mono);
