@@ -4,7 +4,8 @@ export type GlobalNavItem = {
 };
 
 export type WorkspaceNavSegment =
-  | ""
+  | "global"
+  | "dashboard"
   | "orchestration"
   | "vault"
   | "workflow"
@@ -26,16 +27,16 @@ export const GLOBAL_NAV: GlobalNavItem[] = [
 ];
 
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [
-  { label: "< Return to Global", segment: "" },
-  { label: "01 // ORCHESTRATION", segment: "orchestration" },
-  { label: "02 // KNOWLEDGE VAULT", segment: "vault" },
-  { label: "03 // SOP BUILDER", segment: "workflow" },
-  { label: "04 // OUTBOUND QUEUE", segment: "outbound" },
+  { label: "01 // DASHBOARD", segment: "dashboard" },
+  { label: "< Return to Global", segment: "global" },
+  { label: "02 // CLIENT ASSETS", segment: "vault" },
+  { label: "03 // CAMPAIGN RULES", segment: "workflow" },
+  { label: "04 // ACTIVE PIPELINE", segment: "outbound" },
   { label: "05 // SETTINGS", segment: "settings" },
   { label: "06 // CREDENTIALS", segment: "credentials" },
 ];
 
-export function workspacePath(clientId: string, segment: WorkspaceNavSegment): string {
-  if (!segment) return `/admin/client/${clientId}`;
+export function workspacePath(clientId: string, segment: Exclude<WorkspaceNavSegment, "global">): string {
+  if (segment === "dashboard") return `/admin/client/${clientId}`;
   return `/admin/client/${clientId}/${segment}`;
 }

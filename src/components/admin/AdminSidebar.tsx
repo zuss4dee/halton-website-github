@@ -41,8 +41,8 @@ export function AdminSidebar() {
             <div className="mb-3 px-4 font-mono text-[10px] tracking-[0.2em] uppercase text-ink">
               [ Tenant Scoped View ]
             </div>
-            {WORKSPACE_NAV.map((item, index) => {
-              if (index === 0) {
+            {WORKSPACE_NAV.map((item) => {
+              if (item.segment === "global") {
                 return (
                   <Link
                     key={item.label}
@@ -56,7 +56,7 @@ export function AdminSidebar() {
 
               const href = workspacePath(clientId, item.segment);
               const isActive =
-                item.segment === ""
+                item.segment === "dashboard"
                   ? pathname === href || pathname === `${href}/`
                   : pathname === href || pathname.startsWith(`${href}/`);
 

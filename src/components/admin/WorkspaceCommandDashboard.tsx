@@ -26,15 +26,25 @@ type MetricCardProps = {
   descriptor: string;
   value: number;
   isLoading: boolean;
+  caption: string;
 };
 
-function MetricCard({ descriptor, value, isLoading }: MetricCardProps) {
+function MetricCard({ descriptor, value, isLoading, caption }: MetricCardProps) {
   return (
-    <article className="border border-gray-700 bg-black p-5">
-      <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-gray-500">{descriptor}</p>
-      <p className="mt-2 font-mono text-4xl text-white tabular-nums">
-        {isLoading ? "[ CALC... ]" : value.toLocaleString()}
+    <article className="rounded-none border border-gray-800 bg-[#0a0a0a] p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+      <header className="border-b border-gray-800 pb-3">
+        <p className="font-mono text-[10px] leading-relaxed tracking-[0.14em] text-gray-500">
+          {descriptor}
+        </p>
+      </header>
+      <p className="mt-4 font-mono text-3xl leading-none tabular-nums tracking-tight sm:text-4xl">
+        {isLoading ? (
+          <span className="text-gray-500">[ CALC... ]</span>
+        ) : (
+          <span className="text-emerald-400">{value.toLocaleString()}</span>
+        )}
       </p>
+      <span className="mt-2 block text-xs text-gray-500">{caption}</span>
     </article>
   );
 }
@@ -109,26 +119,30 @@ export function WorkspaceCommandDashboard({ clientId }: WorkspaceCommandDashboar
         </div>
       </header>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-1 gap-px rounded-none border border-gray-800 bg-gray-800 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          descriptor="// TOTAL_LEADS_ACQUIRED"
+          descriptor="// INGESTED_SIGNALS"
           value={metrics.totalLeads}
           isLoading={metrics.isLoading}
+          caption="Total raw leads scraped/captured"
         />
         <MetricCard
-          descriptor="// PENDING_REVIEW_QUEUE"
+          descriptor="// PENDING_TRIAGE"
           value={metrics.pendingReview}
           isLoading={metrics.isLoading}
+          caption="Leads awaiting your approval"
         />
         <MetricCard
-          descriptor="// SENT_EMAILS_DISPATCHED"
+          descriptor="// ACTIVE_OUTBOUND"
           value={metrics.sentEmails}
           isLoading={metrics.isLoading}
+          caption="Prospects currently in sequences"
         />
         <MetricCard
-          descriptor="// TOTAL_AGENT_OPERATIONS"
+          descriptor="// POSITIVE_INTENT"
           value={metrics.totalAgentOps}
           isLoading={metrics.isLoading}
+          caption="Replies or booked meetings"
         />
       </div>
     </section>
