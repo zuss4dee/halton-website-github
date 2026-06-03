@@ -29,7 +29,7 @@ export function Nav() {
         mobileOpen ? "max-md:z-[110]" : ""
       }`}
     >
-      <div className="flex items-center justify-between gap-4 px-5 sm:px-6 md:px-10 py-5 md:py-6 text-ink md:text-paper">
+      <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5 sm:gap-4 md:px-10 md:py-6 text-ink md:text-paper">
         <a href="/" className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-ink md:text-paper touch-target sm:flex-none">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="text-ink md:text-paper shrink-0" aria-hidden>
             <rect x="0.5" y="0.5" width="21" height="21" stroke="currentColor" />

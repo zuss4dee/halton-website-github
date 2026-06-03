@@ -56,20 +56,20 @@ export function MobileNav({ open, onOpenChange }: MobileNavProps) {
           />
           <motion.nav
             id="mobile-nav-panel"
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 12 }}
             transition={{ duration: 0.35, ease: [0.77, 0, 0.175, 1] }}
-            className="fixed inset-x-0 top-[5.25rem] bottom-0 z-[101] flex flex-col pointer-events-none md:hidden"
+            className="fixed right-0 top-[4.75rem] bottom-0 z-[101] flex w-[min(15.5rem,calc(100vw-2.5rem))] flex-col pointer-events-none border-l border-hairline md:hidden"
             aria-label="Mobile"
           >
-            <div className="pointer-events-auto flex shrink-0 items-center border-b border-hairline bg-paper px-5 py-4 sm:px-6">
+            <div className="pointer-events-auto flex shrink-0 items-center border-b border-hairline bg-paper px-4 py-3">
               <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
                 Menu
               </span>
             </div>
 
-            <div className="pointer-events-auto min-h-0 flex-1 overflow-y-auto bg-paper px-6 pb-10 pt-2 text-ink">
+            <div className="pointer-events-auto min-h-0 flex-1 overflow-y-auto bg-paper px-4 pb-10 pt-2 text-ink">
               <ul className="flex flex-col gap-0 border-t border-hairline">
                 {links.map((link, i) => (
                   <motion.li

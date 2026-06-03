@@ -21,16 +21,16 @@ export function Hero() {
     <section
       id="top"
       ref={ref}
-      className="relative min-h-0 flex flex-col justify-start gap-4 pt-24 pb-8 px-5 sm:px-6 md:min-h-[100dvh] md:justify-between md:gap-0 md:pt-32 md:pb-10 md:px-10"
+      className="relative min-h-0 flex flex-col justify-start gap-4 pt-[4.75rem] pb-8 px-5 sm:px-6 md:min-h-[100dvh] md:justify-between md:gap-0 md:pt-32 md:pb-10 md:px-10"
     >
       <div className="absolute inset-0 grid-bg opacity-[0.6] pointer-events-none" />
-      <div className="absolute inset-x-0 top-24 h-px hairline" />
+      <div className="absolute inset-x-0 top-[4.75rem] md:top-24 h-px hairline" />
 
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1, delay: 0.4 }}
-        className="relative flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+        className="relative flex flex-col gap-3 pt-3 sm:flex-row sm:items-start sm:justify-between md:pt-0"
       >
         <div className="eyebrow">
           <span className="inline-block w-2 h-2 bg-ink mr-2 -mb-[1px]" />
@@ -44,7 +44,7 @@ export function Hero() {
         </div>
       </motion.div>
 
-      <motion.div style={{ y, opacity }} className="relative">
+      <motion.div style={{ y, opacity }} className="relative mt-6 md:mt-0">
         <div className="grid md:grid-cols-12 md:gap-8 items-end">
           <div className="md:col-span-7">
             <h1 className="font-display hero-headline leading-[0.88] sm:leading-[0.86] tracking-[-0.045em] text-balance">
