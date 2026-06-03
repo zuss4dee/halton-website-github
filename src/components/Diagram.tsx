@@ -9,10 +9,10 @@ export function Diagram() {
     <section className="relative px-6 md:px-10 py-32 md:py-44 border-t border-hairline">
       <div className="grid md:grid-cols-12 gap-10">
         <div className="md:col-span-3">
-          <div className="eyebrow">— Flow / Live</div>
+          <div className="eyebrow">Booking / Live</div>
           <p className="mt-4 text-ink-soft text-sm leading-relaxed max-w-xs">
-            A signal enters. It is resolved, enriched, scored, routed, and
-            actioned. Every hop is observable.
+            We find prospects, read intent, qualify replies, and book meetings on
+            your calendar. You take the close. Every step is visible to you.
           </p>
         </div>
         <div className="md:col-span-9">
@@ -26,12 +26,12 @@ export function Diagram() {
 
               {/* nodes */}
               {[
-                { x: 120, y: 450, label: "SIGNAL" },
-                { x: 480, y: 220, label: "IDENTITY" },
+                { x: 120, y: 450, label: "PROSPECT" },
+                { x: 480, y: 220, label: "TARGET" },
                 { x: 480, y: 680, label: "INTENT" },
-                { x: 880, y: 450, label: "ENRICH" },
-                { x: 1240, y: 250, label: "ROUTE" },
-                { x: 1240, y: 650, label: "ACTION" },
+                { x: 880, y: 450, label: "QUALIFIED" },
+                { x: 1240, y: 250, label: "BOOKED" },
+                { x: 1240, y: 650, label: "CLOSE" },
               ].map((n, i) => (
                 <motion.g
                   key={n.label}
@@ -122,10 +122,10 @@ export function Diagram() {
             ))}
 
             <div className="absolute top-3 left-3 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-              FIG.01 · pipeline.flow
+              FIG.01 · booking.flow
             </div>
             <div className="absolute bottom-3 right-3 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-              latency · 1.4s p95
+              live · booking flow
             </div>
           </div>
         </div>

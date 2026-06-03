@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
 
-export function CtaButton() {
+export function CtaButton({ label = "See If You Qualify" }: { label?: string }) {
   const [hover, setHover] = useState(false);
   return (
     <motion.a
@@ -14,7 +14,7 @@ export function CtaButton() {
       whileTap={{ scale: 0.98 }}
     >
       <span className="dot" />
-      <span>Apply for Infrastructure Audit</span>
+      <span>{label}</span>
       <motion.svg
         width="14"
         height="10"

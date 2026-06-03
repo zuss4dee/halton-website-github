@@ -1,6 +1,7 @@
 import { motion, useScroll, useTransform, type Variants } from "framer-motion";
 import { useRef } from "react";
 import { CtaButton } from "./CtaButton";
+import { HeroPipelineVisual } from "./HeroPipelineVisual";
 
 const word: Variants = {
   hidden: { y: "110%" },
@@ -31,7 +32,7 @@ export function Hero() {
       >
         <div className="eyebrow">
           <span className="inline-block w-2 h-2 bg-ink mr-2 -mb-[1px]" />
-          Index 001 — Growth Infrastructure
+          Index 001 / Growth Infrastructure
         </div>
         <div className="eyebrow hidden md:block max-w-[18ch] text-right">
           A private practice for category-defining operators
@@ -40,24 +41,31 @@ export function Hero() {
 
       {/* Headline */}
       <motion.div style={{ y, opacity }} className="relative">
-        <h1 className="font-display text-[clamp(3.5rem,12vw,12rem)] leading-[0.86] tracking-[-0.045em] text-balance">
-          {["Pipeline,", "engineered."].map((w, i) => (
-            <span key={i} className="block overflow-hidden">
-              <motion.span variants={word} initial="hidden" animate="show" custom={i} className="block">
-                {w}
-              </motion.span>
-            </span>
-          ))}
-        </h1>
+        <div className="grid md:grid-cols-12 md:gap-8 items-end">
+          <div className="md:col-span-7">
+            <h1 className="font-display text-[clamp(3.5rem,12vw,12rem)] leading-[0.86] tracking-[-0.045em] text-balance">
+              {["We book.", "You close."].map((w, i) => (
+                <span key={i} className="block overflow-hidden">
+                  <motion.span variants={word} initial="hidden" animate="show" custom={i} className="block">
+                    {w}
+                  </motion.span>
+                </span>
+              ))}
+            </h1>
+          </div>
+          <div className="hidden md:block md:col-span-5 md:col-start-8 pb-4">
+            <HeroPipelineVisual />
+          </div>
+        </div>
 
         <div className="mt-10 grid md:grid-cols-12 gap-6 items-end">
           <div className="md:col-span-5 md:col-start-1">
             <p className="text-base md:text-lg text-ink-soft max-w-md leading-relaxed">
-              We build custom data architecture that puts qualified B2B SaaS demos on your calendar. Zero headcount required.
+              Done-for-you outbound that puts qualified buyers on your calendar. You only talk to people ready to buy.
             </p>
           </div>
           <div className="md:col-span-4 md:col-start-9 flex md:justify-end">
-            <CtaButton />
+            <CtaButton label="See If You Qualify" />
           </div>
         </div>
       </motion.div>
@@ -71,19 +79,19 @@ export function Hero() {
       >
         <div>
           <div className="text-ink mb-2">EST. MMXX</div>
-          <div>Zurich · NYC</div>
+          <div>Manchester · UK</div>
         </div>
         <div>
-          <div className="text-ink mb-2">Engagements / yr</div>
-          <div>6 — by referral</div>
+          <div className="text-ink mb-2">Partners / quarter</div>
+          <div>3 · capped intake</div>
         </div>
         <div>
-          <div className="text-ink mb-2">Avg. uplift</div>
-          <div>2.4× pipeline · 18 mo</div>
+          <div className="text-ink mb-2">Show rate</div>
+          <div>78% · qualified</div>
         </div>
         <div>
-          <div className="text-ink mb-2">Scope</div>
-          <div>Series B → IPO</div>
+          <div className="text-ink mb-2">Focus</div>
+          <div>High-ticket B2B · UK</div>
         </div>
       </motion.div>
     </section>

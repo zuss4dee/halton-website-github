@@ -4,25 +4,25 @@ const layers = [
   {
     id: "L4",
     title: "Risk Reversal",
-    body: "We configure secondary domains and strict DNS protocols. We protect your main company server from ever hitting a spam blacklist.",
+    body: "You pay for meetings that happen, not effort, excuses, or busywork.",
     items: ["Domain warm-up", "SPF/DKIM/DMARC", "Inbox placement"],
   },
   {
     id: "L3",
     title: "Intent Data",
-    body: "We write custom scripts to pull active buying signals—like recent funding or hiring surges. We only target prospects who actually have capital.",
+    body: "We target buyers showing intent now, not dead lists and cold noise.",
     items: ["Signal tracking", "Intent scoring", "Account mapping"],
   },
   {
     id: "L2",
     title: "Automated Execution",
-    body: "We load verified leads into a sequence engine that runs 24/7. No salaries, no sick days, no human error.",
+    body: "Our systems run 24/7. No missed follow-ups. No dropped balls.",
     items: ["Sequence engine", "Auto-send", "Personalization"],
   },
   {
     id: "L1",
     title: "Inbox Triage",
-    body: "We filter out the noise. You only get notified when a high-intent prospect says 'yes' and books a meeting.",
+    body: "We filter tire-kickers. Only qualified decision-makers reach your desk.",
     items: ["Reply triage", "Lead routing", "Calendar sync"],
   },
 ];
@@ -32,7 +32,7 @@ export function Stack() {
     <section id="stack" className="relative px-6 md:px-10 py-32 md:py-48 border-t border-hairline">
       <div className="grid md:grid-cols-12 gap-10 mb-20">
         <div className="md:col-span-3">
-          <div className="eyebrow">— 02 / Stack</div>
+          <div className="eyebrow">02 / Stack</div>
         </div>
         <div className="md:col-span-9">
           <h2 className="font-display text-4xl md:text-6xl leading-[0.95] tracking-[-0.035em] max-w-3xl">

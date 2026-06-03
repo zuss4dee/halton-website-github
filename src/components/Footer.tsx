@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router";
+
 export function Footer() {
   return (
     <footer className="relative px-6 md:px-10 pt-16 pb-8 border-t border-hairline">
@@ -10,19 +12,17 @@ export function Footer() {
         </div>
         <div className="md:col-span-3 font-mono text-[11px] tracking-[0.18em] uppercase text-ink-soft flex flex-col gap-2">
           <div className="text-ink mb-2">Offices</div>
-          <div>Zurich · Bahnhofstrasse</div>
-          <div>New York · Lafayette</div>
+          <div>Manchester · UK</div>
         </div>
         <div className="md:col-span-2 font-mono text-[11px] tracking-[0.18em] uppercase text-ink-soft flex flex-col gap-2">
           <div className="text-ink mb-2">Contact</div>
-          <a href="mailto:practice@halton.works" className="hover:text-ink transition-colors">practice@halton.works</a>
-          <div>+41 44 000 00</div>
+          <a href="mailto:enquiry@haltonworks.com" className="hover:text-ink transition-colors">enquiry@haltonworks.com</a>
         </div>
         <div className="md:col-span-2 font-mono text-[11px] tracking-[0.18em] uppercase text-ink-soft flex flex-col gap-2">
           <div className="text-ink mb-2">Index</div>
           <a href="#thesis" className="hover:text-ink transition-colors">Thesis</a>
           <a href="#stack" className="hover:text-ink transition-colors">Stack</a>
-          <a href="#engagements" className="hover:text-ink transition-colors">Engagements</a>
+          <a href="#engagements" className="hover:text-ink transition-colors">Fit</a>
         </div>
       </div>
 
@@ -30,9 +30,22 @@ export function Footer() {
         HALTON
       </div>
 
-      <div className="flex flex-col md:flex-row justify-between gap-3 pt-6 border-t border-hairline font-mono text-[11px] tracking-[0.18em] uppercase text-ink-soft">
-        <div>© MMXXVI · Halton Works AG</div>
-        <div>All systems nominal · v2.6.1</div>
+      <div className="flex flex-col gap-4 pt-6 border-t border-hairline font-mono text-[11px] tracking-[0.18em] uppercase text-ink-soft">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <Link to="/privacy" className="hover:text-ink transition-colors">
+            Privacy Policy
+          </Link>
+          <Link to="/terms" className="hover:text-ink transition-colors">
+            Terms of Use
+          </Link>
+          <Link to="/cookies" className="hover:text-ink transition-colors">
+            Cookies
+          </Link>
+        </div>
+        <div className="flex flex-col md:flex-row justify-between gap-3">
+          <div>© MMXXVI · Halton Works AG</div>
+          <div>All systems nominal · v2.6.1</div>
+        </div>
       </div>
     </footer>
   );

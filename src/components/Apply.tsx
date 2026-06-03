@@ -7,7 +7,7 @@ export function Apply() {
       <div className="absolute inset-0 grid-bg opacity-40 pointer-events-none" />
 
       <div className="relative max-w-6xl mx-auto text-center">
-        <div className="eyebrow mb-10">— Apply</div>
+        <div className="eyebrow mb-10">Apply</div>
         <motion.h2
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -15,16 +15,16 @@ export function Apply() {
           transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
           className="font-display text-[clamp(2.5rem,9vw,9rem)] leading-[0.88] tracking-[-0.045em] text-balance"
         >
-          We onboard 3 partners <br /> a quarter.
+          Three partners <br /> per quarter.
         </motion.h2>
         <p className="mt-10 text-ink-soft max-w-md mx-auto leading-relaxed">
-          Deep technical infrastructure requires focus. We cap our client load to guarantee deliverability and ensure zero market overlap.
+          We cap client load so we over-deliver on every guarantee. One Q3 spot remains.
         </p>
         <div className="mt-12 flex justify-center">
-          <CtaButton />
+          <CtaButton label="Claim Your Spot" />
         </div>
         <div className="mt-10 font-mono text-[11px] tracking-[0.18em] uppercase text-ink-soft">
-          Q2 · 2 of 6 cohort slots remain
+          Q3 · 1 spot remains
         </div>
       </div>
     </section>

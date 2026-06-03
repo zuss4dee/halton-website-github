@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
 
 const ps = [
-  { n: "I", t: "Demos over deliverability", b: "We don't sell open rates, clicks, or marketing vanity metrics. We deliver booked sales calls." },
-  { n: "II", t: "Assets over agencies", b: "You aren't renting an agency retainer. You are investing in permanent revenue infrastructure." },
-  { n: "III", t: "Engineers over marketers", b: "Outbound is a math equation of intent data and server protocols. We write the code to solve it." },
-  { n: "IV", t: "Signals over spam", b: "Pitching a founder the exact day they raise a Series A isn't spam. It's perfectly timed data orchestration." },
+  { n: "I", t: "Meetings over metrics", b: "Open rates don't pay rent. Booked calls with buyers do." },
+  { n: "II", t: "Revenue over hope", b: "Stop renting outcomes from agencies. Build a pipeline you can forecast." },
+  { n: "III", t: "Execution over error", b: "Humans miss follow-ups. Systems don't." },
+  { n: "IV", t: "Buyers over lists", b: "Cold lists are a tax. Intent is an advantage." },
 ];
 
 export function Principles() {
@@ -12,7 +12,7 @@ export function Principles() {
     <section id="index" className="relative px-6 md:px-10 py-32 md:py-44 border-t border-hairline">
       <div className="grid md:grid-cols-12 gap-10 mb-16">
         <div className="md:col-span-3">
-          <div className="eyebrow">— 04 / Index</div>
+          <div className="eyebrow">04 / Index</div>
         </div>
         <div className="md:col-span-9">
           <h2 className="font-display text-4xl md:text-6xl leading-[0.95] tracking-[-0.035em] max-w-2xl">

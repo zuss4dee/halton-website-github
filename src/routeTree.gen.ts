@@ -10,6 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as CookiesRouteImport } from './routes/cookies'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -37,6 +40,21 @@ import { Route as AdminClientIdAgentsAgentIdRouteImport } from './routes/admin/c
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
   path: '/workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CookiesRoute = CookiesRouteImport.update({
+  id: '/cookies',
+  path: '/cookies',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRouteRoute = AdminRouteRouteImport.update({
@@ -162,6 +180,9 @@ const AdminClientIdAgentsAgentIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
+  '/cookies': typeof CookiesRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/workspace': typeof WorkspaceRoute
   '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
@@ -187,6 +208,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cookies': typeof CookiesRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/workspace': typeof WorkspaceRoute
   '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
@@ -213,6 +237,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
+  '/cookies': typeof CookiesRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/workspace': typeof WorkspaceRoute
   '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
@@ -241,6 +268,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/cookies'
+    | '/privacy'
+    | '/terms'
     | '/workspace'
     | '/admin/credentials'
     | '/admin/infrastructure'
@@ -266,6 +296,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cookies'
+    | '/privacy'
+    | '/terms'
     | '/workspace'
     | '/admin/credentials'
     | '/admin/infrastructure'
@@ -291,6 +324,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/cookies'
+    | '/privacy'
+    | '/terms'
     | '/workspace'
     | '/admin/credentials'
     | '/admin/infrastructure'
@@ -318,6 +354,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
+  CookiesRoute: typeof CookiesRoute
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
   WorkspaceRoute: typeof WorkspaceRoute
   ApiAgentRoute: typeof ApiAgentRoute
   ApiHealthRoute: typeof ApiHealthRoute
@@ -330,6 +369,27 @@ declare module '@tanstack/react-router' {
       path: '/workspace'
       fullPath: '/workspace'
       preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cookies': {
+      id: '/cookies'
+      path: '/cookies'
+      fullPath: '/cookies'
+      preLoaderRoute: typeof CookiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -557,6 +617,9 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
+  CookiesRoute: CookiesRoute,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
   WorkspaceRoute: WorkspaceRoute,
   ApiAgentRoute: ApiAgentRoute,
   ApiHealthRoute: ApiHealthRoute,

@@ -18,13 +18,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "A private growth engineering practice. We architect the silent systems behind compounding revenue — pipelines, signals, and automation.",
+          "Done-for-you outbound for high-ticket B2B in the UK. We book qualified meetings on your calendar.",
       },
       { property: "og:title", content: "Halton/Works — Invisible Revenue Infrastructure" },
       {
         property: "og:description",
         content:
-          "A private growth engineering practice. Six engagements a year. By referral.",
+          "Done-for-you outbound for high-ticket B2B. We book qualified meetings from Manchester, UK.",
       },
     ],
   }),
