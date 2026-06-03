@@ -21,7 +21,7 @@ export function Hero() {
     <section
       id="top"
       ref={ref}
-      className="relative min-h-[100dvh] flex flex-col justify-between pt-28 pb-8 px-5 sm:px-6 md:pt-32 md:pb-10 md:px-10"
+      className="relative min-h-0 flex flex-col justify-start gap-4 pt-24 pb-8 px-5 sm:px-6 md:min-h-[100dvh] md:justify-between md:gap-0 md:pt-32 md:pb-10 md:px-10"
     >
       <div className="absolute inset-0 grid-bg opacity-[0.6] pointer-events-none" />
       <div className="absolute inset-x-0 top-24 h-px hairline" />
@@ -62,18 +62,14 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="mt-8 md:hidden">
-          <HeroPipelineVisual compact />
-        </div>
-
-        <div className="mt-8 md:mt-10 flex flex-col gap-8 md:grid md:grid-cols-12 md:gap-6 md:items-end">
+        <div className="mt-8 flex flex-col gap-6 md:mt-10 md:grid md:grid-cols-12 md:gap-6 md:items-end">
           <div className="md:col-span-5 md:col-start-1">
             <p className="text-[15px] sm:text-base md:text-lg text-ink-soft max-w-md leading-relaxed">
               Done-for-you outbound that puts qualified buyers on your calendar. You only talk to people ready to buy.
             </p>
           </div>
           <div className="md:col-span-4 md:col-start-9 flex md:justify-end w-full sm:w-auto">
-            <CtaButton label="See If You Qualify" className="w-full sm:w-auto justify-center sm:justify-start" />
+            <CtaButton label="See If You Qualify" className="cta--hero w-full md:w-auto justify-center md:justify-start" />
           </div>
         </div>
       </motion.div>
@@ -82,7 +78,7 @@ export function Hero() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, delay: 1.2 }}
-        className="relative mt-12 md:mt-16 grid grid-cols-2 gap-x-4 gap-y-6 sm:gap-6 md:grid-cols-4 font-mono text-[10px] sm:text-[11px] tracking-[0.16em] uppercase text-ink-soft"
+        className="relative mt-8 pt-6 md:mt-16 md:pt-0 grid grid-cols-2 gap-x-4 gap-y-6 sm:gap-6 md:grid-cols-4 font-mono text-[10px] sm:text-[11px] tracking-[0.16em] uppercase text-ink-soft"
       >
         <div>
           <div className="text-ink mb-2">EST. MMXX</div>
