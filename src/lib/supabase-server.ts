@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 /**
  * Server-only Supabase client (service role). Never import from client components.
  */
-function createSupabaseServer() {
+export function createSupabaseServer() {
   const supabaseUrl =
     process.env.VITE_SUPABASE_URL ??
     process.env.SUPABASE_URL ??
@@ -18,6 +19,12 @@ function createSupabaseServer() {
 
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: {
+      transport: WebSocket,
+    },
+    global: {
+      WebSocket,
+    },
   });
 }
 

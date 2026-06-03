@@ -11,8 +11,7 @@ type ClientWorkspaceProps = {
 export function ClientWorkspace({ client }: ClientWorkspaceProps) {
   const clientId = client.id ?? "";
   const companyName = client.company_name?.trim() ?? "Unknown Client";
-  const { agents, isLoading: isAgentsLoading } = useAgentRoster();
-
+  const { agents, isLoading: isAgentsLoading } = useAgentRoster(clientId);
   return (
     <div className="space-y-8">
       <header className="border-b border-hairline pb-6">
@@ -40,7 +39,11 @@ export function ClientWorkspace({ client }: ClientWorkspaceProps) {
         </p>
       </header>
 
-      <AgentRoster agents={agents} isLoading={isAgentsLoading} />
+      <AgentRoster
+        clientId={clientId}
+        agents={agents}
+        isLoading={isAgentsLoading}
+      />
 
       <TerminalChat clientId={clientId} agents={agents} />
     </div>

@@ -13,3 +13,7 @@ verify_jwt = false
 
 [functions.run-outbound]
 verify_jwt = true
+
+# Resend inbound email.received — no Supabase JWT
+[functions.inbound-webhook]
+verify_jwt = false

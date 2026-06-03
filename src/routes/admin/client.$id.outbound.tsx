@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useClientRoute } from "@/components/admin/ClientRouteContext";
-import { WorkspaceOutboundQueue } from "@/components/admin/WorkspaceOutboundQueue";
+import { WorkspaceOutboundPage } from "@/components/admin/WorkspaceOutboundPage";
 
 export const Route = createFileRoute("/admin/client/$id/outbound")({
   head: ({ params }) => ({
@@ -20,5 +20,5 @@ function ClientOutboundPage() {
     );
   }
 
-  return <WorkspaceOutboundQueue clientId={client.id} />;
+  return <WorkspaceOutboundPage clientId={client.id} />;
 }

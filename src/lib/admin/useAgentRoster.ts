@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { mergeAgentsForWorkspace } from "@/lib/admin/agentRosterMerge";
 import { supabase } from "@/lib/supabase";
 
 export type AgentRosterRow = {
@@ -7,11 +8,14 @@ export type AgentRosterRow = {
   role: string | null;
   model: string | null;
   system_prompt: string | null;
+  skills: unknown;
+  is_active: boolean | null;
+  client_id: string | null;
   created_at: string | null;
 };
 
 const AGENT_SELECT =
-  "id, name, role, model, system_prompt, created_at" as const;
+  "id, name, role, model, system_prompt, skills, is_active, client_id, created_at" as const;
 
 function sortAgents(agents: AgentRosterRow[]) {
   return [...agents].sort((a, b) => {
@@ -22,20 +26,59 @@ function sortAgents(agents: AgentRosterRow[]) {
   });
 }
 
-export function useAgentRoster() {
+export function useAgentRoster(clientId?: string) {
   const [agents, setAgents] = useState<AgentRosterRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const workspaceClientId = clientId?.trim() ?? "";
+
+  const applyRows = useCallback(
+    (rows: AgentRosterRow[]) => {
+      const merged = workspaceClientId
+        ? mergeAgentsForWorkspace(rows, workspaceClientId)
+        : sortAgents(rows);
+      setAgents(merged);
+    },
+    [workspaceClientId],
+  );
+
+  const fetchAgents = useCallback(async () => {
+    setIsLoading(true);
+
+    let query = supabase.from("agents").select(AGENT_SELECT).order("created_at", {
+      ascending: true,
+    });
+
+    if (workspaceClientId) {
+      query = query.or(`client_id.is.null,client_id.eq.${workspaceClientId}`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("AGENT_ROSTER_FETCH_ERROR:", error);
+      setAgents([]);
+    } else {
+      applyRows((data ?? []) as AgentRosterRow[]);
+    }
+
+    setIsLoading(false);
+  }, [applyRows, workspaceClientId]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const fetchAgents = async () => {
+    void (async () => {
       setIsLoading(true);
 
-      const { data, error } = await supabase
-        .from("agents")
-        .select(AGENT_SELECT)
-        .order("created_at", { ascending: true });
+      let query = supabase.from("agents").select(AGENT_SELECT).order("created_at", {
+        ascending: true,
+      });
+
+      if (workspaceClientId) {
+        query = query.or(`client_id.is.null,client_id.eq.${workspaceClientId}`);
+      }
+
+      const { data, error } = await query;
 
       if (cancelled) return;
 
@@ -43,44 +86,25 @@ export function useAgentRoster() {
         console.error("AGENT_ROSTER_FETCH_ERROR:", error);
         setAgents([]);
       } else {
-        setAgents(sortAgents((data ?? []) as AgentRosterRow[]));
+        applyRows((data ?? []) as AgentRosterRow[]);
       }
 
       setIsLoading(false);
-    };
-
-    void fetchAgents();
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyRows, workspaceClientId]);
 
   useEffect(() => {
     const channel = supabase
-      .channel("agent-roster-live")
+      .channel(`agent-roster-live-${workspaceClientId || "global"}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "agents" },
-        (payload) => {
-          const row = payload.new as AgentRosterRow;
-          if (!row?.id) return;
-
-          setAgents((current) => {
-            if (current.some((agent) => agent.id === row.id)) return current;
-            return sortAgents([...current, row]);
-          });
-          setIsLoading(false);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "agents" },
-        (payload) => {
-          const row = payload.old as { id?: string };
-          if (!row?.id) return;
-
-          setAgents((current) => current.filter((agent) => agent.id !== row.id));
+        { event: "*", schema: "public", table: "agents" },
+        () => {
+          void fetchAgents();
         },
       )
       .subscribe();
@@ -88,7 +112,7 @@ export function useAgentRoster() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchAgents, workspaceClientId]);
 
-  return { agents, isLoading };
+  return { agents, isLoading, refetch: fetchAgents };
 }

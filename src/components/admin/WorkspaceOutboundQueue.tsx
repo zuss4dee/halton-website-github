@@ -6,10 +6,13 @@ import {
   LEAD_QUEUE_STATUS,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
+import { sendApprovedLeadEmail } from "@/lib/admin/outboundSend";
 import { supabase } from "@/lib/supabase";
 
 type WorkspaceOutboundQueueProps = {
   clientId: string;
+  refreshKey?: number;
+  embedded?: boolean;
 };
 
 /** Alias for workspace human review queue & outbox */
@@ -19,6 +22,8 @@ export function HumanReviewQueue(props: WorkspaceOutboundQueueProps) {
 }
 
 type QueueTab = "pending" | "sent";
+
+const LIST_PAGE_SIZE = 10;
 
 function formatSentLabel(value: string | null | undefined, fallback?: string | null) {
   const raw = value ?? fallback;
@@ -65,7 +70,11 @@ function QueueTabButton({
   );
 }
 
-export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps) {
+export function WorkspaceOutboundQueue({
+  clientId,
+  refreshKey = 0,
+  embedded = false,
+}: WorkspaceOutboundQueueProps) {
   const workspaceClientId = clientId.trim();
 
   const [activeTab, setActiveTab] = useState<QueueTab>("pending");
@@ -75,8 +84,18 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [listPage, setListPage] = useState(1);
 
   const isSentTab = activeTab === "sent";
+  const totalItems = queue.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / LIST_PAGE_SIZE));
+  const safeListPage = Math.min(listPage, totalPages);
+  const rangeStart = totalItems === 0 ? 0 : (safeListPage - 1) * LIST_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(safeListPage * LIST_PAGE_SIZE, totalItems);
+  const paginatedQueue = queue.slice(
+    (safeListPage - 1) * LIST_PAGE_SIZE,
+    safeListPage * LIST_PAGE_SIZE,
+  );
 
   const fetchQueue = useCallback(async () => {
     if (!workspaceClientId) {
@@ -116,12 +135,23 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
 
   useEffect(() => {
     void fetchQueue();
-  }, [fetchQueue]);
+  }, [fetchQueue, refreshKey]);
 
   useEffect(() => {
     setSelectedLead(null);
     setEditedCopy("");
+    setListPage(1);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (listPage > totalPages) {
+      setListPage(totalPages);
+    }
+  }, [listPage, totalPages]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [refreshKey]);
 
   useEffect(() => {
     setEditedCopy(selectedLead?.generated_copy ?? "");
@@ -140,30 +170,42 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
       return;
     }
 
+    const recipientEmail = selectedLead.email?.trim();
+    if (!recipientEmail) {
+      setStatusMessage("> ERROR: LEAD HAS NO EMAIL — CANNOT SEND");
+      return;
+    }
+
+    if (!editedCopy.trim()) {
+      setStatusMessage("> ERROR: DRAFT BODY IS EMPTY");
+      return;
+    }
+
     setIsSubmitting(true);
 
-    const sentAt = new Date().toISOString();
+    const company =
+      selectedLead.target_company?.trim() ||
+      selectedLead.company_name?.trim() ||
+      "your team";
 
-    const { error } = await supabase
-      .from("leads")
-      .update({
-        queue_status: LEAD_QUEUE_STATUS.SENT,
-        campaign_status: LEAD_CAMPAIGN_STATUS.SENT,
-        generated_copy: editedCopy,
-        sent_at: sentAt,
-      })
-      .eq("id", selectedLead.id)
-      .eq("client_id", workspaceClientId);
+    const sendResult = await sendApprovedLeadEmail({
+      clientId: workspaceClientId,
+      leadId: selectedLead.id,
+      email: recipientEmail,
+      body: editedCopy,
+      subject: `Quick question for ${company}`,
+    });
 
-    if (error) {
-      console.error("APPROVE SEND ERROR:", error);
+    if (!sendResult.success) {
+      console.error("APPROVE SEND ERROR:", sendResult.error);
+      setStatusMessage(`> SEND FAILED: ${sendResult.error ?? "unknown"}`);
       setIsSubmitting(false);
       return;
     }
 
     setSelectedLead(null);
     setEditedCopy("");
-    setStatusMessage("> SYSTEM: SENT — RECORD ARCHIVED TO OUTBOX");
+    setStatusMessage("> SYSTEM: SENT VIA RESEND — RECORD ARCHIVED TO OUTBOX");
     await fetchQueue();
     setIsSubmitting(false);
   };
@@ -207,28 +249,38 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
     : "QUEUE_EMPTY // NO_DRAFTS_PENDING";
 
   return (
-    <section className="flex min-h-[60vh] flex-col">
-      <header className="border-b border-hairline pb-8 md:pb-10">
-        <Link
-          to="/admin/client/$id/orchestration"
-          params={{ id: workspaceClientId }}
-          className="mb-6 inline-block font-mono text-[11px] tracking-[0.16em] uppercase text-ink-soft transition-colors hover:text-ink"
-        >
-          &lt; RETURN_TO_ORCHESTRATION
-        </Link>
-        <div className="eyebrow mb-4">Workspace 03 // Outbound Queue</div>
-        <h1 className="font-display text-[clamp(2rem,6vw,4.5rem)] leading-[0.88] tracking-[-0.04em]">
-          OUTBOUND_QUEUE // HUMAN_REVIEW
-        </h1>
-        <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-          WORKSPACE_SCOPED // {workspaceClientId || "NO_CLIENT"}
-        </p>
-        <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft/80">
-          {isSentTab ? "OUTBOX_LAYER // DEPLOYED_CAMPAIGN_HISTORY" : "APPROVAL_LAYER // AI_DRAFTS_PENDING_RELEASE"}
-        </p>
-      </header>
+    <section className={`flex flex-col ${embedded ? "" : "min-h-[60vh]"}`}>
+      {!embedded ? (
+        <header className="border-b border-hairline pb-8 md:pb-10">
+          <Link
+            to="/admin/client/$id/orchestration"
+            params={{ id: workspaceClientId }}
+            className="mb-6 inline-block font-mono text-[11px] tracking-[0.16em] uppercase text-ink-soft transition-colors hover:text-ink"
+          >
+            &lt; RETURN_TO_ORCHESTRATION
+          </Link>
+          <div className="eyebrow mb-4">04 // Outbound Queue</div>
+          <h1 className="font-display text-[clamp(2rem,6vw,4.5rem)] leading-[0.88] tracking-[-0.04em]">
+            OUTBOUND_QUEUE // HUMAN_REVIEW
+          </h1>
+          <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
+            WORKSPACE_SCOPED // {workspaceClientId || "NO_CLIENT"}
+          </p>
+          <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft/80">
+            {isSentTab
+              ? "OUTBOX_LAYER // DEPLOYED_CAMPAIGN_HISTORY"
+              : "APPROVAL_LAYER // AI_DRAFTS_PENDING_RELEASE"}
+          </p>
+        </header>
+      ) : (
+        <div className="mb-4 border-b border-hairline pb-3">
+          <h3 className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
+            Human Review Queue
+          </h3>
+        </div>
+      )}
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className={`flex flex-wrap gap-2 ${embedded ? "" : "mt-6"}`}>
         <QueueTabButton
           active={activeTab === "pending"}
           label="Pending Approval"
@@ -253,7 +305,8 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
             {listHeading}
           </h2>
 
-          <div className="space-y-2 border border-hairline p-2">
+          <div className="flex max-h-[600px] flex-col border border-hairline">
+            <div className="flex-1 space-y-2 overflow-y-auto p-2">
             {isLoading ? (
               <div className="px-3 py-6 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
                 LOADING_QUEUE...
@@ -263,7 +316,7 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
                 {emptyListCopy}
               </div>
             ) : (
-              queue.map((lead) => {
+              paginatedQueue.map((lead) => {
                 const isSelected = selectedLead?.id === lead.id;
                 const name = lead.prospect_name?.trim() || "Unknown Prospect";
                 const company = lead.target_company?.trim() || "—";
@@ -308,6 +361,33 @@ export function WorkspaceOutboundQueue({ clientId }: WorkspaceOutboundQueueProps
                 );
               })
             )}
+            </div>
+
+            {!isLoading && totalItems > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline bg-paper px-3 py-2">
+                <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-ink-soft">
+                  {rangeStart} – {rangeEnd} of {totalItems}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={safeListPage <= 1}
+                    onClick={() => setListPage((page) => Math.max(1, page - 1))}
+                    className="border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft transition-colors hover:border-ink hover:text-ink disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safeListPage >= totalPages}
+                    onClick={() => setListPage((page) => Math.min(totalPages, page + 1))}
+                    className="border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft transition-colors hover:border-ink hover:text-ink disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 

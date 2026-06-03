@@ -20,6 +20,12 @@ import {
   type VaultSaveCategory,
 } from "@/lib/admin/clientKnowledge";
 import {
+  filterCeoTools,
+  getDefaultSkillsForRole,
+  resolveAgentForWorkspace,
+} from "@/lib/admin/agentConfig";
+import { getEffectiveToolBindings } from "@/lib/admin/agentStudio";
+import {
   formatReplyContextForCeo,
   type TerminalReplyContext,
 } from "@/lib/admin/terminalReply";
@@ -31,6 +37,8 @@ type CEOAgent = {
   id: string;
   role: string;
   system_prompt: string;
+  skills?: unknown;
+  tool_bindings?: unknown;
 };
 
 type AgentRosterRow = {
@@ -205,6 +213,11 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           target: targetAgentRole,
           task: specificTask,
         });
+
+        const targetResolved = await resolveAgentForWorkspace(targetAgentRole, clientId);
+        if (!targetResolved.agent) {
+          return targetResolved.error ?? `CRITICAL: ${targetAgentRole} Agent offline.`;
+        }
 
         const subAgentResult = await executeSubAgent(
           targetAgentRole,
@@ -761,6 +774,10 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           role: normalizedRole,
           model,
           system_prompt: resolvedSystemPrompt,
+          client_id: clientId,
+          skills: getDefaultSkillsForRole(normalizedRole),
+          tool_bindings: getDefaultSkillsForRole(normalizedRole),
+          is_active: true,
         });
 
         if (insertError) {
@@ -786,6 +803,13 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
     }),
   };
 
+  const ceoSkills = getEffectiveToolBindings(ceoAgent);
+  const enabledCeoTools = filterCeoTools(tools, ceoSkills);
+  const ceoTools = {
+    ...enabledCeoTools,
+    create_sub_agent: tools.create_sub_agent,
+  };
+
   const response = await generateText({
     model: deepseek("deepseek-chat"),
     system: `${ceoAgent.system_prompt}
@@ -801,7 +825,7 @@ ${emailDagDirective}
 
 ${clientContext}`,
     prompt,
-    tools,
+    tools: ceoTools,
     stopWhen: stepCountIs(5),
   });
 

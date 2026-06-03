@@ -13,20 +13,26 @@ import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as AdminVaultRouteImport } from './routes/admin/vault'
+import { Route as AdminSystemRouteImport } from './routes/admin/system'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
 import { Route as AdminLedgerRouteImport } from './routes/admin/ledger'
 import { Route as AdminInfrastructureRouteImport } from './routes/admin/infrastructure'
+import { Route as AdminCredentialsRouteImport } from './routes/admin/credentials'
 import { Route as AdminClientsClientSlugRouteImport } from './routes/admin/clients.$clientSlug'
 import { Route as AdminClientIdRouteImport } from './routes/admin/client.$id'
 import { Route as AdminClientIdIndexRouteImport } from './routes/admin/client.$id.index'
 import { Route as AdminClientIdWorkflowRouteImport } from './routes/admin/client.$id.workflow'
+import { Route as AdminClientIdVaultRouteImport } from './routes/admin/client.$id.vault'
 import { Route as AdminClientIdSettingsRouteImport } from './routes/admin/client.$id.settings'
 import { Route as AdminClientIdOutboundRouteImport } from './routes/admin/client.$id.outbound'
 import { Route as AdminClientIdOrchestrationRouteImport } from './routes/admin/client.$id.orchestration'
 import { Route as AdminClientIdLeadsRouteImport } from './routes/admin/client.$id.leads'
 import { Route as AdminClientIdInfrastructureRouteImport } from './routes/admin/client.$id.infrastructure'
+import { Route as AdminClientIdCredentialsRouteImport } from './routes/admin/client.$id.credentials'
+import { Route as AdminClientIdAgentsAgentIdRouteImport } from './routes/admin/client.$id.agents.$agentId'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
@@ -48,6 +54,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAgentRoute = ApiAgentRouteImport.update({
   id: '/api/agent',
   path: '/api/agent',
@@ -56,6 +67,11 @@ const ApiAgentRoute = ApiAgentRouteImport.update({
 const AdminVaultRoute = AdminVaultRouteImport.update({
   id: '/vault',
   path: '/vault',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminSystemRoute = AdminSystemRouteImport.update({
+  id: '/system',
+  path: '/system',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminLogsRoute = AdminLogsRouteImport.update({
@@ -71,6 +87,11 @@ const AdminLedgerRoute = AdminLedgerRouteImport.update({
 const AdminInfrastructureRoute = AdminInfrastructureRouteImport.update({
   id: '/infrastructure',
   path: '/infrastructure',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminCredentialsRoute = AdminCredentialsRouteImport.update({
+  id: '/credentials',
+  path: '/credentials',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminClientsClientSlugRoute = AdminClientsClientSlugRouteImport.update({
@@ -91,6 +112,11 @@ const AdminClientIdIndexRoute = AdminClientIdIndexRouteImport.update({
 const AdminClientIdWorkflowRoute = AdminClientIdWorkflowRouteImport.update({
   id: '/workflow',
   path: '/workflow',
+  getParentRoute: () => AdminClientIdRoute,
+} as any)
+const AdminClientIdVaultRoute = AdminClientIdVaultRouteImport.update({
+  id: '/vault',
+  path: '/vault',
   getParentRoute: () => AdminClientIdRoute,
 } as any)
 const AdminClientIdSettingsRoute = AdminClientIdSettingsRouteImport.update({
@@ -120,65 +146,95 @@ const AdminClientIdInfrastructureRoute =
     path: '/infrastructure',
     getParentRoute: () => AdminClientIdRoute,
   } as any)
+const AdminClientIdCredentialsRoute =
+  AdminClientIdCredentialsRouteImport.update({
+    id: '/credentials',
+    path: '/credentials',
+    getParentRoute: () => AdminClientIdRoute,
+  } as any)
+const AdminClientIdAgentsAgentIdRoute =
+  AdminClientIdAgentsAgentIdRouteImport.update({
+    id: '/agents/$agentId',
+    path: '/agents/$agentId',
+    getParentRoute: () => AdminClientIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/workspace': typeof WorkspaceRoute
+  '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
+  '/api/health': typeof ApiHealthRoute
   '/admin/': typeof AdminIndexRoute
   '/admin/client/$id': typeof AdminClientIdRouteWithChildren
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/admin/client/$id/credentials': typeof AdminClientIdCredentialsRoute
   '/admin/client/$id/infrastructure': typeof AdminClientIdInfrastructureRoute
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
   '/admin/client/$id/outbound': typeof AdminClientIdOutboundRoute
   '/admin/client/$id/settings': typeof AdminClientIdSettingsRoute
+  '/admin/client/$id/vault': typeof AdminClientIdVaultRoute
   '/admin/client/$id/workflow': typeof AdminClientIdWorkflowRoute
   '/admin/client/$id/': typeof AdminClientIdIndexRoute
+  '/admin/client/$id/agents/$agentId': typeof AdminClientIdAgentsAgentIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/workspace': typeof WorkspaceRoute
+  '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
+  '/api/health': typeof ApiHealthRoute
   '/admin': typeof AdminIndexRoute
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/admin/client/$id/credentials': typeof AdminClientIdCredentialsRoute
   '/admin/client/$id/infrastructure': typeof AdminClientIdInfrastructureRoute
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
   '/admin/client/$id/outbound': typeof AdminClientIdOutboundRoute
   '/admin/client/$id/settings': typeof AdminClientIdSettingsRoute
+  '/admin/client/$id/vault': typeof AdminClientIdVaultRoute
   '/admin/client/$id/workflow': typeof AdminClientIdWorkflowRoute
   '/admin/client/$id': typeof AdminClientIdIndexRoute
+  '/admin/client/$id/agents/$agentId': typeof AdminClientIdAgentsAgentIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/workspace': typeof WorkspaceRoute
+  '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
+  '/api/health': typeof ApiHealthRoute
   '/admin/': typeof AdminIndexRoute
   '/admin/client/$id': typeof AdminClientIdRouteWithChildren
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/admin/client/$id/credentials': typeof AdminClientIdCredentialsRoute
   '/admin/client/$id/infrastructure': typeof AdminClientIdInfrastructureRoute
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
   '/admin/client/$id/outbound': typeof AdminClientIdOutboundRoute
   '/admin/client/$id/settings': typeof AdminClientIdSettingsRoute
+  '/admin/client/$id/vault': typeof AdminClientIdVaultRoute
   '/admin/client/$id/workflow': typeof AdminClientIdWorkflowRoute
   '/admin/client/$id/': typeof AdminClientIdIndexRoute
+  '/admin/client/$id/agents/$agentId': typeof AdminClientIdAgentsAgentIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -186,59 +242,77 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/workspace'
+    | '/admin/credentials'
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
+    | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
+    | '/api/health'
     | '/admin/'
     | '/admin/client/$id'
     | '/admin/clients/$clientSlug'
+    | '/admin/client/$id/credentials'
     | '/admin/client/$id/infrastructure'
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
     | '/admin/client/$id/outbound'
     | '/admin/client/$id/settings'
+    | '/admin/client/$id/vault'
     | '/admin/client/$id/workflow'
     | '/admin/client/$id/'
+    | '/admin/client/$id/agents/$agentId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/workspace'
+    | '/admin/credentials'
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
+    | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
+    | '/api/health'
     | '/admin'
     | '/admin/clients/$clientSlug'
+    | '/admin/client/$id/credentials'
     | '/admin/client/$id/infrastructure'
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
     | '/admin/client/$id/outbound'
     | '/admin/client/$id/settings'
+    | '/admin/client/$id/vault'
     | '/admin/client/$id/workflow'
     | '/admin/client/$id'
+    | '/admin/client/$id/agents/$agentId'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/workspace'
+    | '/admin/credentials'
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
+    | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
+    | '/api/health'
     | '/admin/'
     | '/admin/client/$id'
     | '/admin/clients/$clientSlug'
+    | '/admin/client/$id/credentials'
     | '/admin/client/$id/infrastructure'
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
     | '/admin/client/$id/outbound'
     | '/admin/client/$id/settings'
+    | '/admin/client/$id/vault'
     | '/admin/client/$id/workflow'
     | '/admin/client/$id/'
+    | '/admin/client/$id/agents/$agentId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -246,6 +320,7 @@ export interface RootRouteChildren {
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRoute
   ApiAgentRoute: typeof ApiAgentRoute
+  ApiHealthRoute: typeof ApiHealthRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -278,6 +353,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/agent': {
       id: '/api/agent'
       path: '/api/agent'
@@ -290,6 +372,13 @@ declare module '@tanstack/react-router' {
       path: '/vault'
       fullPath: '/admin/vault'
       preLoaderRoute: typeof AdminVaultRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/system': {
+      id: '/admin/system'
+      path: '/system'
+      fullPath: '/admin/system'
+      preLoaderRoute: typeof AdminSystemRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/logs': {
@@ -311,6 +400,13 @@ declare module '@tanstack/react-router' {
       path: '/infrastructure'
       fullPath: '/admin/infrastructure'
       preLoaderRoute: typeof AdminInfrastructureRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/credentials': {
+      id: '/admin/credentials'
+      path: '/credentials'
+      fullPath: '/admin/credentials'
+      preLoaderRoute: typeof AdminCredentialsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/clients/$clientSlug': {
@@ -339,6 +435,13 @@ declare module '@tanstack/react-router' {
       path: '/workflow'
       fullPath: '/admin/client/$id/workflow'
       preLoaderRoute: typeof AdminClientIdWorkflowRouteImport
+      parentRoute: typeof AdminClientIdRoute
+    }
+    '/admin/client/$id/vault': {
+      id: '/admin/client/$id/vault'
+      path: '/vault'
+      fullPath: '/admin/client/$id/vault'
+      preLoaderRoute: typeof AdminClientIdVaultRouteImport
       parentRoute: typeof AdminClientIdRoute
     }
     '/admin/client/$id/settings': {
@@ -376,27 +479,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminClientIdInfrastructureRouteImport
       parentRoute: typeof AdminClientIdRoute
     }
+    '/admin/client/$id/credentials': {
+      id: '/admin/client/$id/credentials'
+      path: '/credentials'
+      fullPath: '/admin/client/$id/credentials'
+      preLoaderRoute: typeof AdminClientIdCredentialsRouteImport
+      parentRoute: typeof AdminClientIdRoute
+    }
+    '/admin/client/$id/agents/$agentId': {
+      id: '/admin/client/$id/agents/$agentId'
+      path: '/agents/$agentId'
+      fullPath: '/admin/client/$id/agents/$agentId'
+      preLoaderRoute: typeof AdminClientIdAgentsAgentIdRouteImport
+      parentRoute: typeof AdminClientIdRoute
+    }
   }
 }
 
 interface AdminClientIdRouteChildren {
+  AdminClientIdCredentialsRoute: typeof AdminClientIdCredentialsRoute
   AdminClientIdInfrastructureRoute: typeof AdminClientIdInfrastructureRoute
   AdminClientIdLeadsRoute: typeof AdminClientIdLeadsRoute
   AdminClientIdOrchestrationRoute: typeof AdminClientIdOrchestrationRoute
   AdminClientIdOutboundRoute: typeof AdminClientIdOutboundRoute
   AdminClientIdSettingsRoute: typeof AdminClientIdSettingsRoute
+  AdminClientIdVaultRoute: typeof AdminClientIdVaultRoute
   AdminClientIdWorkflowRoute: typeof AdminClientIdWorkflowRoute
   AdminClientIdIndexRoute: typeof AdminClientIdIndexRoute
+  AdminClientIdAgentsAgentIdRoute: typeof AdminClientIdAgentsAgentIdRoute
 }
 
 const AdminClientIdRouteChildren: AdminClientIdRouteChildren = {
+  AdminClientIdCredentialsRoute: AdminClientIdCredentialsRoute,
   AdminClientIdInfrastructureRoute: AdminClientIdInfrastructureRoute,
   AdminClientIdLeadsRoute: AdminClientIdLeadsRoute,
   AdminClientIdOrchestrationRoute: AdminClientIdOrchestrationRoute,
   AdminClientIdOutboundRoute: AdminClientIdOutboundRoute,
   AdminClientIdSettingsRoute: AdminClientIdSettingsRoute,
+  AdminClientIdVaultRoute: AdminClientIdVaultRoute,
   AdminClientIdWorkflowRoute: AdminClientIdWorkflowRoute,
   AdminClientIdIndexRoute: AdminClientIdIndexRoute,
+  AdminClientIdAgentsAgentIdRoute: AdminClientIdAgentsAgentIdRoute,
 }
 
 const AdminClientIdRouteWithChildren = AdminClientIdRoute._addFileChildren(
@@ -404,9 +527,11 @@ const AdminClientIdRouteWithChildren = AdminClientIdRoute._addFileChildren(
 )
 
 interface AdminRouteRouteChildren {
+  AdminCredentialsRoute: typeof AdminCredentialsRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
   AdminLedgerRoute: typeof AdminLedgerRoute
   AdminLogsRoute: typeof AdminLogsRoute
+  AdminSystemRoute: typeof AdminSystemRoute
   AdminVaultRoute: typeof AdminVaultRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminClientIdRoute: typeof AdminClientIdRouteWithChildren
@@ -414,9 +539,11 @@ interface AdminRouteRouteChildren {
 }
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminCredentialsRoute: AdminCredentialsRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
   AdminLedgerRoute: AdminLedgerRoute,
   AdminLogsRoute: AdminLogsRoute,
+  AdminSystemRoute: AdminSystemRoute,
   AdminVaultRoute: AdminVaultRoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminClientIdRoute: AdminClientIdRouteWithChildren,
@@ -432,6 +559,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRouteRoute: AdminRouteRouteWithChildren,
   WorkspaceRoute: WorkspaceRoute,
   ApiAgentRoute: ApiAgentRoute,
+  ApiHealthRoute: ApiHealthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

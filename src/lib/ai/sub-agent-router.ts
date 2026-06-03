@@ -1,6 +1,8 @@
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 
+import { filterSubAgentTools, resolveAgentForWorkspace } from "@/lib/admin/agentConfig";
+import { getEffectiveToolBindings } from "@/lib/admin/agentStudio";
 import type { ClientRow } from "@/lib/admin/clientsRepository";
 import { supabase } from "@/lib/supabase";
 
@@ -11,6 +13,9 @@ type SubAgentRow = {
   role: string;
   name?: string | null;
   system_prompt: string;
+  skills?: unknown;
+  tool_bindings?: unknown;
+  is_active?: boolean | null;
 };
 
 const COPYWRITER_DEPRECATION_RULE = `CRITICAL: The save_draft_email chat bypass is DEPRECATED. You cannot write to the Human Review Queue directly. If asked to draft or queue an email, refuse and tell the CEO to run build_and_run_automation so copy flows through deepseek_llm -> copy_reviewer (Deliverability Chief) -> approval_gate.`;
@@ -32,7 +37,9 @@ function subAgentTools(
     return {};
   }
 
-  return createResearchTools(clientId, executionId, agent.id);
+  const allTools = createResearchTools(clientId, executionId, agent.id);
+  const enabledSkills = getEffectiveToolBindings(agent);
+  return filterSubAgentTools(allTools, enabledSkills);
 }
 
 function createResearchTools(clientId: string, executionId: string, agentId: string) {
@@ -203,17 +210,12 @@ export async function executeSubAgent(
   clientId: string,
   executionId: string,
 ): Promise<string> {
-  const { data: subAgent, error } = await supabase
-    .from("agents")
-    .select("*")
-    .eq("role", role)
-    .single();
-
-  if (error || !subAgent) {
-    throw new Error(`CRITICAL: ${role} Agent offline.`);
+  const resolved = await resolveAgentForWorkspace(role, clientId);
+  if (!resolved.agent) {
+    throw new Error(resolved.error ?? `CRITICAL: ${role} Agent offline.`);
   }
 
-  const agent = subAgent as SubAgentRow;
+  const agent = resolved.agent as SubAgentRow;
 
   const { data: client, error: clientError } = await supabase
     .from("clients")

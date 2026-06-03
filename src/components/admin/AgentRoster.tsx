@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
@@ -8,6 +9,7 @@ import {
 import type { AgentRosterRow } from "@/lib/admin/useAgentRoster";
 
 type AgentRosterProps = {
+  clientId: string;
   agents: AgentRosterRow[];
   isLoading: boolean;
 };
@@ -33,6 +35,10 @@ function getAgentStatus(agent: AgentRosterRow, isWorking: boolean): AgentStatus 
 
   if (role === "CEO_ROUTER" || role === "CEO") {
     return { label: "Online", tone: "online" };
+  }
+
+  if (agent.is_active === false) {
+    return { label: "Standby", tone: "standby" };
   }
 
   const hasMissingData =
@@ -71,18 +77,33 @@ function AgentRosterSkeleton() {
 
 function AgentRosterCard({
   agent,
+  clientId,
   isWorking,
 }: {
   agent: AgentRosterRow;
+  clientId: string;
   isWorking: boolean;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const status = getAgentStatus(agent, isWorking);
   const displayName = agent.name?.trim() || "UNNAMED_AGENT";
   const prompt = agent.system_prompt?.trim() ?? "";
+  const inactive = agent.is_active === false;
 
   return (
-    <article className="bg-paper px-3 py-3">
+    <article
+      className={`bg-paper transition-colors ${inactive ? "opacity-60" : ""}`}
+    >
+      <div className="px-3 pt-3">
+        <Link
+          to="/admin/client/$id/agents/$agentId"
+          params={{ id: clientId, agentId: agent.id }}
+          className="mb-2 inline-block font-mono text-[9px] tracking-[0.16em] uppercase text-ink-soft transition-colors hover:text-ink"
+        >
+          Agent Studio →
+        </Link>
+      </div>
+      <div className="px-3 pb-3">
       <header className="flex items-start gap-2">
         <span
           className={`mt-1 h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_CLASS[status.tone]}`}
@@ -110,9 +131,10 @@ function AgentRosterCard({
           </dl>
         </div>
       </header>
+      </div>
 
       {prompt ? (
-        <div className="mt-2 border-t border-hairline pt-2 pl-4">
+        <div className="border-t border-hairline px-3 pb-3 pt-2 pl-7">
           <button
             type="button"
             onClick={() => setInstructionsOpen((open) => !open)}
@@ -137,7 +159,11 @@ function AgentRosterCard({
   );
 }
 
-export function AgentRoster({ agents, isLoading }: AgentRosterProps) {
+export function AgentRoster({
+  clientId,
+  agents,
+  isLoading,
+}: AgentRosterProps) {
   const [activeRoles, setActiveRoles] = useState<Record<string, true>>({});
   const idleTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -206,6 +232,7 @@ export function AgentRoster({ agents, isLoading }: AgentRosterProps) {
               <AgentRosterCard
                 key={agent.id}
                 agent={agent}
+                clientId={clientId}
                 isWorking={Boolean(roleKey && activeRoles[roleKey])}
               />
             );

@@ -1,16 +1,16 @@
 export type GlobalNavItem = {
   label: string;
-  to: "/admin" | "/admin/vault" | "/admin/logs";
+  to: "/admin" | "/admin/vault" | "/admin/logs" | "/admin/credentials" | "/admin/system";
 };
 
 export type WorkspaceNavSegment =
   | ""
   | "orchestration"
-  | "leads"
-  | "outbound"
-  | "infrastructure"
+  | "vault"
   | "workflow"
-  | "settings";
+  | "outbound"
+  | "settings"
+  | "credentials";
 
 export type WorkspaceNavItem = {
   label: string;
@@ -21,17 +21,18 @@ export const GLOBAL_NAV: GlobalNavItem[] = [
   { label: "Index 000 // Tenant Index", to: "/admin" },
   { label: "Index 001 // Global Vault", to: "/admin/vault" },
   { label: "Index 002 // System Logs", to: "/admin/logs" },
+  { label: "Index 003 // Credentials", to: "/admin/credentials" },
+  { label: "06 // SYSTEM HEALTH", to: "/admin/system" },
 ];
 
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [
   { label: "< Return to Global", segment: "" },
-  { label: "Workspace 05 // Command Dashboard", segment: "" },
-  { label: "Workspace 01 // Orchestration", segment: "orchestration" },
-  { label: "Workspace 02 // Lead Pipeline", segment: "leads" },
-  { label: "Workspace 03 // Outbound Queue", segment: "outbound" },
-  { label: "Workspace 04 // Infrastructure", segment: "infrastructure" },
-  { label: "Workspace 06 // SOP Builder", segment: "workflow" },
-  { label: "Workspace 07 // Settings", segment: "settings" },
+  { label: "01 // ORCHESTRATION", segment: "orchestration" },
+  { label: "02 // KNOWLEDGE VAULT", segment: "vault" },
+  { label: "03 // SOP BUILDER", segment: "workflow" },
+  { label: "04 // OUTBOUND QUEUE", segment: "outbound" },
+  { label: "05 // SETTINGS", segment: "settings" },
+  { label: "06 // CREDENTIALS", segment: "credentials" },
 ];
 
 export function workspacePath(clientId: string, segment: WorkspaceNavSegment): string {

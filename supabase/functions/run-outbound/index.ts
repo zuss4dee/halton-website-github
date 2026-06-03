@@ -41,6 +41,9 @@ const DEFAULT_DEEPSEEK_PROMPT =
 const DEFAULT_RESEND_SUBJECT = "Quick question for {{steps.APOLLO_NODE.company}}";
 const DEFAULT_RESEND_BODY = "{{steps.REVIEWER_NODE.copy}}\n\nLet's chat.\n- Damilare";
 
+/** Sandbox mode: all outbound sends route here during testing — never to real leads. */
+const SANDBOX_TO_EMAIL = "adedamilare1@gmail.com";
+
 const DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS = `STRICT NEGATIVE CONSTRAINTS (violating any rule = failed output):
 1. FATAL ERROR IF: You include the word "Subject:" or the actual subject line in your output. Output ONLY the body copy.
 2. FATAL ERROR IF: The text is longer than 3 sentences. You MUST use heavy line breaks between sentences.
@@ -63,6 +66,144 @@ Operational rules:
 ${DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS}`;
 
 const DELIVERABILITY_CHIEF_ROLE = "DELIVERABILITY_CHIEF";
+const DEFAULT_DEEPSEEK_WRITER_ROLE = "DEEPSEEK_WRITER";
+const DEFAULT_COPYWRITER_SYSTEM = "You are an elite B2B copywriter.";
+
+type AgentDbRow = {
+  id: string;
+  role: string;
+  model: string | null;
+  temperature: number | null;
+  system_prompt: string | null;
+  tool_bindings: unknown;
+  skills: unknown;
+  reasoning_config: unknown;
+  is_active: boolean | null;
+  client_id: string | null;
+};
+
+type AgentRuntimeConfig = {
+  agentId: string | null;
+  role: string;
+  model: string;
+  temperature: number;
+  systemPrompt: string;
+  toolBindings: string[];
+  reasoningConfig: Record<string, unknown>;
+};
+
+const AGENT_RUNTIME_SELECT =
+  "id, role, model, temperature, system_prompt, tool_bindings, skills, reasoning_config, is_active, client_id";
+
+function parseStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((entry): entry is string => typeof entry === "string");
+}
+
+function normalizeReasoningConfig(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return raw as Record<string, unknown>;
+}
+
+function resolveEdgeModel(storedModel: string | null | undefined): string {
+  const model = (storedModel ?? "deepseek-chat").trim();
+  if (model.startsWith("deepseek")) return model;
+  console.warn(
+    `[llm] Model "${model}" is not available in edge vault; routing via deepseek-chat`,
+  );
+  return "deepseek-chat";
+}
+
+async function fetchAgentRuntimeConfig(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  options: { agentId?: string; role?: string },
+): Promise<AgentRuntimeConfig> {
+  const workspaceClientId = clientId.trim();
+  let row: AgentDbRow | null = null;
+
+  if (options.agentId?.trim()) {
+    const { data, error } = await supabaseAdmin
+      .from("agents")
+      .select(AGENT_RUNTIME_SELECT)
+      .eq("id", options.agentId.trim())
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[fetchAgentRuntimeConfig] by id:", error.message);
+    } else if (data) {
+      const candidate = data as AgentDbRow;
+      if (!candidate.client_id || candidate.client_id === workspaceClientId) {
+        row = candidate;
+      }
+    }
+  }
+
+  if (!row && options.role?.trim()) {
+    const normalized = options.role.trim().toUpperCase().replace(/\s+/g, "_");
+
+    const { data: scoped } = await supabaseAdmin
+      .from("agents")
+      .select(AGENT_RUNTIME_SELECT)
+      .eq("role", normalized)
+      .eq("client_id", workspaceClientId)
+      .maybeSingle();
+
+    if (scoped) {
+      row = scoped as AgentDbRow;
+    } else {
+      const { data: global } = await supabaseAdmin
+        .from("agents")
+        .select(AGENT_RUNTIME_SELECT)
+        .eq("role", normalized)
+        .is("client_id", null)
+        .maybeSingle();
+
+      if (global) row = global as AgentDbRow;
+    }
+  }
+
+  if (!row) {
+    return {
+      agentId: null,
+      role: options.role ?? "UNKNOWN",
+      model: "deepseek-chat",
+      temperature: 0.7,
+      systemPrompt: DEFAULT_COPYWRITER_SYSTEM,
+      toolBindings: [],
+      reasoningConfig: {},
+    };
+  }
+
+  if (row.is_active === false) {
+    throw new Error(`Agent ${row.role} is inactive and cannot run in workflows.`);
+  }
+
+  const bindings = parseStringArray(row.tool_bindings);
+  const skills = parseStringArray(row.skills);
+
+  return {
+    agentId: row.id,
+    role: row.role,
+    model: resolveEdgeModel(row.model),
+    temperature:
+      typeof row.temperature === "number" && Number.isFinite(row.temperature)
+        ? row.temperature
+        : 0.7,
+    systemPrompt: row.system_prompt?.trim() || DEFAULT_COPYWRITER_SYSTEM,
+    toolBindings: bindings.length > 0 ? bindings : skills,
+    reasoningConfig: normalizeReasoningConfig(row.reasoning_config),
+  };
+}
+
+function buildRuntimeSystemPrompt(config: AgentRuntimeConfig, fallback: string): string {
+  const base = config.systemPrompt.trim() || fallback;
+  const extra = config.reasoningConfig.instructions;
+  if (typeof extra === "string" && extra.trim()) {
+    return `${base}\n\n${extra.trim()}`;
+  }
+  return base;
+}
 
 function applyDeliverabilityChiefConstraints(prompt: string): string {
   const trimmed = prompt.trim();
@@ -395,25 +536,36 @@ async function runApolloSearch(
   }
 }
 
-async function runDeepseekCompletion(
+async function runLlmCompletion(
   keys: VaultKeys,
-  systemPrompt: string,
+  config: AgentRuntimeConfig,
   userContent: string,
   stepLabel: string,
 ): Promise<string> {
+  const requestBody: Record<string, unknown> = {
+    model: config.model,
+    temperature: config.temperature,
+    messages: [
+      { role: "system", content: config.systemPrompt },
+      { role: "user", content: userContent },
+    ],
+  };
+
+  if (typeof config.reasoningConfig.max_tokens === "number") {
+    requestBody.max_tokens = config.reasoningConfig.max_tokens;
+  }
+
+  if (typeof config.reasoningConfig.top_p === "number") {
+    requestBody.top_p = config.reasoningConfig.top_p;
+  }
+
   const deepseekResponse = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${keys.deepseek_api_key}`,
     },
-    body: JSON.stringify({
-      model: "deepseek-chat",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   const deepseekData = (await parseJsonResponse(deepseekResponse, stepLabel)) as {
@@ -426,38 +578,49 @@ async function runDeepseekCompletion(
   return copy;
 }
 
-async function runDeepseek(
+async function runDeepseekWithAgent(
   keys: VaultKeys,
-  prompt: string,
-): Promise<{ copy: string; prompt: string }> {
-  const copy = await runDeepseekCompletion(
-    keys,
-    "You are an elite B2B copywriter.",
-    prompt,
-    "deepseek_llm",
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  node: FlowNode,
+  userPrompt: string,
+): Promise<{ copy: string; prompt: string; agentId: string | null }> {
+  const agentId = getNodeDataString(node, "agentId");
+  const agentRole = getNodeDataString(node, "agentRole") || DEFAULT_DEEPSEEK_WRITER_ROLE;
+
+  const runtime = await fetchAgentRuntimeConfig(supabaseAdmin, clientId, {
+    agentId: agentId || undefined,
+    role: agentId ? undefined : agentRole,
+  });
+
+  const systemPrompt = buildRuntimeSystemPrompt(runtime, DEFAULT_COPYWRITER_SYSTEM);
+  const llmConfig: AgentRuntimeConfig = { ...runtime, systemPrompt };
+
+  console.info(
+    `[deepseek_llm] agent=${runtime.role} model=${llmConfig.model} temp=${llmConfig.temperature} tools=${llmConfig.toolBindings.join(",") || "none"}`,
   );
-  return { copy, prompt };
+
+  const copy = await runLlmCompletion(keys, llmConfig, userPrompt, "deepseek_llm");
+  return { copy, prompt: userPrompt, agentId: runtime.agentId };
 }
 
-async function fetchDeliverabilityChiefPrompt(
+async function fetchDeliverabilityChiefRuntime(
   supabaseAdmin: ReturnType<typeof createClient>,
-): Promise<string> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from("agents")
-      .select("system_prompt")
-      .eq("role", DELIVERABILITY_CHIEF_ROLE)
-      .maybeSingle();
+  clientId: string,
+  node: FlowNode,
+): Promise<AgentRuntimeConfig> {
+  const agentId = getNodeDataString(node, "agentId");
 
-    const prompt = typeof data?.system_prompt === "string" ? data.system_prompt.trim() : "";
-    if (!error && prompt.length > 0) {
-      return applyDeliverabilityChiefConstraints(prompt);
-    }
-  } catch (fetchError) {
-    console.warn("[copy_reviewer] Failed to load DELIVERABILITY_CHIEF prompt:", fetchError);
-  }
+  const runtime = await fetchAgentRuntimeConfig(supabaseAdmin, clientId, {
+    agentId: agentId || undefined,
+    role: agentId ? undefined : DELIVERABILITY_CHIEF_ROLE,
+  });
 
-  return DELIVERABILITY_CHIEF_FALLBACK_PROMPT;
+  const systemPrompt = applyDeliverabilityChiefConstraints(
+    buildRuntimeSystemPrompt(runtime, DELIVERABILITY_CHIEF_FALLBACK_PROMPT),
+  );
+
+  return { ...runtime, systemPrompt };
 }
 
 async function runResend(
@@ -535,16 +698,23 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const clientId = body.clientId as string | undefined;
+    const sendApproved =
+      body.sendApproved === true ||
+      body.mode === "send_approved" ||
+      body.mode === "send";
     const testEmail = (body.testEmail ?? body.email) as string | undefined;
     let nodes = body.nodes as FlowNode[] | undefined;
     let edges = body.edges as FlowEdge[] | undefined;
 
     if (!clientId) throw new Error("Missing clientId in request body");
-    if (!testEmail) {
+    if (!sendApproved && !testEmail) {
       throw new Error("Missing testEmail or email in request body (safemode destination)");
     }
 
-    if (!Array.isArray(nodes) || !Array.isArray(edges) || nodes.length === 0) {
+    if (
+      !sendApproved &&
+      (!Array.isArray(nodes) || !Array.isArray(edges) || nodes.length === 0)
+    ) {
       const fallback = buildDefaultWorkflow(testEmail);
       nodes = fallback.nodes;
       edges = fallback.edges;
@@ -563,7 +733,7 @@ serve(async (req) => {
     });
 
     console.log("Incoming clientId received by function:", clientId);
-    console.log("DAG nodes:", nodes.length, "edges:", edges.length);
+    console.log("DAG nodes:", nodes?.length ?? 0, "edges:", edges?.length ?? 0);
 
     const { data: clientData, error: clientError } = await supabaseAdmin
       .from("clients")
@@ -585,18 +755,87 @@ serve(async (req) => {
 
     console.log("Successfully retrieved keys for client:", clientId);
 
-    if (!clientData?.deepseek_api_key || !clientData?.resend_api_key) {
-      throw new Error("Missing required vault keys (deepseek_api_key, resend_api_key)");
+    const keys = clientData as VaultKeys;
+
+    if (sendApproved) {
+      if (!clientData?.resend_api_key) {
+        throw new Error("Missing required vault key (resend_api_key) for send_approved");
+      }
+
+      const leadId = body.leadId as string | undefined;
+      const recipientEmail = (
+        (body.email as string | undefined) ??
+        (body.testEmail as string | undefined)
+      )?.trim();
+      const textBody = (body.body as string | undefined)?.trim();
+      const originalSubject = (
+        (body.subject as string | undefined) ?? "Quick question"
+      ).trim();
+
+      if (!recipientEmail) {
+        throw new Error("send_approved: Missing email or testEmail for intended recipient");
+      }
+      if (!textBody) {
+        throw new Error("send_approved: Missing body (approved copy)");
+      }
+
+      const subject = `[SANDBOX: ${recipientEmail}] ${originalSubject}`;
+      const resendResult = await runResend(keys, SANDBOX_TO_EMAIL, subject, textBody);
+
+      if (leadId) {
+        const { error: leadUpdateError } = await supabaseAdmin
+          .from("leads")
+          .update({
+            queue_status: "sent",
+            campaign_status: "SENT",
+            generated_copy: textBody,
+            sent_at: new Date().toISOString(),
+          })
+          .eq("id", leadId)
+          .eq("client_id", clientId);
+
+        if (leadUpdateError) {
+          throw new Error(`send_approved: Failed to update lead: ${leadUpdateError.message}`);
+        }
+      }
+
+      console.info(
+        "[run-outbound] send_approved complete",
+        { leadId, intendedRecipient: recipientEmail, messageId: resendResult.messageId },
+      );
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: "send_approved",
+          resend: {
+            ...resendResult,
+            sandbox: true,
+            intendedRecipient: recipientEmail,
+          },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    const keys = clientData as VaultKeys;
+    if (!clientData?.deepseek_api_key) {
+      throw new Error("Missing required vault key (deepseek_api_key)");
+    }
+
+    if (!clientData?.resend_api_key) {
+      console.warn(
+        "[run-outbound] resend_api_key missing; generation still runs but cannot send until approve.",
+      );
+    }
+
     const useLiveApollo = Boolean(keys.apollo_api_key?.trim());
 
     const executionId = crypto.randomUUID();
     const context: ExecutionContext = {};
     const sortedNodes = sortNodesByEdges(nodes, edges);
     const executionLog: Array<{ nodeId: string; type: string; status: string }> = [];
-    let deliverabilityChiefPrompt: string | null = null;
+    let deliverabilityChiefRuntime: AgentRuntimeConfig | null = null;
+    let haltedAtApprovalGate = false;
 
     console.info(
       "[run-outbound] Execution order:",
@@ -605,6 +844,18 @@ serve(async (req) => {
 
     for (const node of sortedNodes) {
       const nodeType = node.type === "tool" ? getNodeDataString(node, "executor", node.type) : node.type;
+
+      if (haltedAtApprovalGate) {
+        console.info(`[${node.id}] Skipping ${nodeType} — engine halted at approval_gate`);
+        executionLog.push({ nodeId: node.id, type: nodeType, status: "skipped_halted" });
+        continue;
+      }
+
+      if (nodeType === "resend_email") {
+        console.info(`[${node.id}] resend_email skipped — use sendApproved payload to send after human review`);
+        executionLog.push({ nodeId: node.id, type: nodeType, status: "skipped_requires_approval" });
+        continue;
+      }
 
       await insertStepLog(supabaseAdmin, {
         executionId,
@@ -619,11 +870,26 @@ serve(async (req) => {
 
         switch (nodeType) {
           case "trigger": {
-            const payload = {
-              testEmail,
-              email: testEmail,
+            const leadEmail =
+              getNodeDataString(node, "email") ||
+              getNodeDataString(node, "testEmail") ||
+              testEmail;
+            const bulkInjected = node.data?.bulkInjected === true;
+
+            const payload: Record<string, unknown> = {
+              testEmail: leadEmail,
+              email: leadEmail,
               triggeredAt: new Date().toISOString(),
             };
+
+            if (bulkInjected) {
+              payload.first_name = getNodeDataString(node, "first_name") || "there";
+              payload.last_name = getNodeDataString(node, "last_name");
+              payload.company = getNodeDataString(node, "company") || "their company";
+              payload.title = getNodeDataString(node, "title") || "Leader";
+              payload.bulkInjected = true;
+            }
+
             context[node.id] = payload;
             executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
             console.info(`[${node.id}] trigger`, payload);
@@ -632,6 +898,38 @@ serve(async (req) => {
           }
 
           case "apollo_search": {
+            const triggerNode = sortedNodes.find((candidate) => candidate.type === "trigger");
+            const triggerCtx = triggerNode ? context[triggerNode.id] : null;
+            const isBulkInjected =
+              triggerCtx &&
+              typeof triggerCtx === "object" &&
+              (triggerCtx as Record<string, unknown>).bulkInjected === true;
+
+            if (isBulkInjected && triggerCtx && typeof triggerCtx === "object") {
+              const triggerLead = triggerCtx as Record<string, unknown>;
+              const bulkLead: EnrichedTarget = {
+                apollo_person_id: "bulk-csv-inject",
+                email:
+                  typeof triggerLead.email === "string" ? triggerLead.email : testEmail,
+                first_name:
+                  typeof triggerLead.first_name === "string"
+                    ? triggerLead.first_name
+                    : "there",
+                last_name:
+                  typeof triggerLead.last_name === "string" ? triggerLead.last_name : "",
+                title: typeof triggerLead.title === "string" ? triggerLead.title : "Leader",
+                company:
+                  typeof triggerLead.company === "string"
+                    ? triggerLead.company
+                    : "their company",
+              };
+              context[node.id] = bulkLead;
+              executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
+              console.info(`[${node.id}] apollo_search bulk CSV lead`, bulkLead);
+              stepResult = bulkLead;
+              break;
+            }
+
             const lead = await runApolloSearch(keys, testEmail, useLiveApollo);
             const safemodeLead = { ...lead, email: testEmail };
             context[node.id] = safemodeLead;
@@ -654,11 +952,21 @@ serve(async (req) => {
               )?.id ?? "apollo-1");
 
             const prompt = interpolate(rawPrompt, context);
-            const { copy, prompt: resolvedPrompt } = await runDeepseek(keys, prompt);
-            context[node.id] = { copy, prompt: resolvedPrompt };
+            const writerResult = await runDeepseekWithAgent(
+              keys,
+              supabaseAdmin,
+              clientId,
+              node,
+              prompt,
+            );
+            context[node.id] = {
+              copy: writerResult.copy,
+              prompt: writerResult.prompt,
+              agentId: writerResult.agentId,
+            };
             executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
-            console.info(`[${node.id}] deepseek_llm copy length:`, copy.length);
-            stepResult = { copy, prompt: resolvedPrompt };
+            console.info(`[${node.id}] deepseek_llm copy length:`, writerResult.copy.length);
+            stepResult = context[node.id];
             break;
           }
 
@@ -671,21 +979,32 @@ serve(async (req) => {
               );
             }
 
-            if (!deliverabilityChiefPrompt) {
-              deliverabilityChiefPrompt = await fetchDeliverabilityChiefPrompt(supabaseAdmin);
+            if (!deliverabilityChiefRuntime) {
+              deliverabilityChiefRuntime = await fetchDeliverabilityChiefRuntime(
+                supabaseAdmin,
+                clientId,
+                node,
+              );
             }
 
-            const sanitizedText = await runDeepseekCompletion(
+            console.info(
+              `[${node.id}] copy_reviewer agent=${deliverabilityChiefRuntime.role} model=${deliverabilityChiefRuntime.model}`,
+            );
+
+            const sanitizedText = await runLlmCompletion(
               keys,
-              deliverabilityChiefPrompt,
+              deliverabilityChiefRuntime,
               draft,
               "copy_reviewer",
             );
 
-            context[node.id] = { copy: sanitizedText };
+            context[node.id] = {
+              copy: sanitizedText,
+              agentId: deliverabilityChiefRuntime.agentId,
+            };
             executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
             console.info(`[${node.id}] copy_reviewer sanitized length:`, sanitizedText.length);
-            stepResult = { copy: sanitizedText };
+            stepResult = context[node.id];
             break;
           }
 
@@ -714,7 +1033,9 @@ serve(async (req) => {
             );
 
             if (queueError) {
-              throw new Error(`approval_gate: Human Review Queue insert failed: ${queueError.message}`);
+              throw new Error(
+                `approval_gate: Human Review Queue (leads) insert failed: ${queueError.message}`,
+              );
             }
 
             const queuePayload = {
@@ -722,29 +1043,24 @@ serve(async (req) => {
               email: leadEmail,
               subject,
               body: bodyText,
+              queue_status: "pending",
               source: "copy_reviewer",
             };
             context[node.id] = queuePayload;
             executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
-            console.info(`[${node.id}] approval_gate queued for review`, queuePayload);
+            console.info(
+              `[${node.id}] approval_gate HARD STOP — queued for human review; resend_email will not run`,
+              queuePayload,
+            );
             stepResult = queuePayload;
+            haltedAtApprovalGate = true;
             break;
           }
 
           case "resend_email": {
-            const rawTo = getNodeDataString(node, "to", "{{steps.trigger-1.email}}");
-            const rawSubject = getNodeDataString(node, "subject", DEFAULT_RESEND_SUBJECT);
-            const bodyText = resolveSanitizedEmailBody(node, sortedNodes, context);
-
-            const to = interpolate(rawTo, context) || testEmail;
-            const subject = interpolate(rawSubject, context);
-
-            const result = await runResend(keys, to, subject, bodyText);
-            context[node.id] = result;
-            executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
-            console.info(`[${node.id}] resend_email`, result);
-            stepResult = result;
-            break;
+            throw new Error(
+              "resend_email reached during generation — graph must halt at approval_gate; use sendApproved to send.",
+            );
           }
 
           default: {
@@ -767,6 +1083,11 @@ serve(async (req) => {
           nodeType,
           result: stepResult,
         });
+
+        if (haltedAtApprovalGate) {
+          console.info("[run-outbound] Engine halted at approval_gate — downstream nodes skipped");
+          break;
+        }
       } catch (stepError: unknown) {
         const message = stepError instanceof Error ? stepError.message : "Unknown step error";
         context[node.id] = { error: message };
@@ -788,6 +1109,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        haltedAtApprovalGate,
         context,
         executionLog,
         executionId,
