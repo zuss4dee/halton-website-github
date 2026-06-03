@@ -1,9 +1,12 @@
 import tailwindcss from "@tailwindcss/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { nitro } from "nitro/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
+
+const isVercel = process.env.VERCEL === "1";
 
 export default defineConfig(({ command }) => ({
   envPrefix: ["VITE_", "NEXT_PUBLIC_"],
@@ -11,13 +14,17 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
     tsConfigPaths({ projects: ["./tsconfig.json"] }),
     tanstackStart({
-      server: { entry: "server" },
+      ...(isVercel ? {} : { server: { entry: "server" } }),
       serverFns: {
         disableCsrfMiddlewareWarning: true,
       },
     }),
     react(),
-    ...(command === "build" ? [cloudflare({ viteEnvironment: { name: "ssr" } })] : []),
+    ...(command === "build"
+      ? isVercel
+        ? [nitro()]
+        : [cloudflare({ viteEnvironment: { name: "ssr" } })]
+      : []),
   ],
   resolve: {
     alias: {
