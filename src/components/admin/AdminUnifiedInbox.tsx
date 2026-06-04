@@ -4,10 +4,13 @@ import {
   AdminPageHeader,
   formatAdminDate,
 } from "@/components/admin/AdminBrutalist";
-import { fetchUnifiedInboxData, type UnifiedInboxRow } from "@/lib/admin/unifiedInboxData";
+import {
+  fetchUnifiedInboxData,
+  type UnifiedInboxLead,
+} from "@/lib/admin/unifiedInboxData";
 
 export function AdminUnifiedInbox() {
-  const [rows, setRows] = useState<UnifiedInboxRow[]>([]);
+  const [rows, setRows] = useState<UnifiedInboxLead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,36 +40,40 @@ export function AdminUnifiedInbox() {
         </p>
       ) : null}
 
-      <AdminDataTable<UnifiedInboxRow>
+      <AdminDataTable<UnifiedInboxLead>
         recordLabel="Reply Queue"
         columns={[
           {
-            key: "client",
-            header: "Client Name",
-            render: (row) => (
-              <span className="text-sm tracking-[0.04em] uppercase">{row.clientName}</span>
+            key: "workspace",
+            header: "Workspace",
+            render: (lead) => (
+              <span className="text-sm tracking-[0.04em] uppercase">
+                {lead.clients?.company_name?.trim() || "—"}
+              </span>
             ),
           },
           {
-            key: "lead",
-            header: "Lead Name",
-            render: (row) => (
-              <span className="text-sm tracking-[0.04em] uppercase">{row.leadName}</span>
+            key: "prospect",
+            header: "Prospect",
+            render: (lead) => (
+              <span className="text-sm tracking-[0.04em] uppercase">
+                {lead.company?.trim() || "—"}
+              </span>
             ),
           },
           {
             key: "date",
             header: "Date",
             align: "right",
-            render: (row) => (
+            render: (lead) => (
               <span className="text-[10px] tracking-[0.1em] text-ink/55 uppercase tabular-nums">
-                {formatAdminDate(row.activityDate)}
+                {formatAdminDate(lead.last_activity ?? lead.created_at ?? null)}
               </span>
             ),
           },
         ]}
         rows={rows}
-        rowKey={(row) => row.id}
+        rowKey={(lead) => lead.id}
         isLoading={isLoading}
         emptyMessage="No replied leads across tenants."
       />

@@ -41,6 +41,7 @@ export type LeadRow = {
   id: string;
   client_id?: string | null;
   prospect_name?: string | null;
+  company?: string | null;
   target_company?: string | null;
   target_role?: string | null;
   enrichment_status?: string | null;
@@ -78,7 +79,7 @@ function normalizeEnrichment(value: string | null | undefined): EnrichmentStatus
 }
 
 export function mapLeadRowToStagedLead(row: LeadRow): StagedLead {
-  const company = row.target_company ?? row.company_name;
+  const company = row.company ?? row.target_company ?? row.company_name;
   const role = row.target_role ?? row.role;
   const enrichment = row.enrichment_status ?? row.status;
 
