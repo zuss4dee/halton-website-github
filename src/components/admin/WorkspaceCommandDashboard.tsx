@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { HighIntentLeadDrawer } from "@/components/admin/HighIntentLeadDrawer";
-import {
-  buildManualFollowUpLeadsFilter,
-  LEAD_QUEUE_STATUS,
-  type LeadRow,
-} from "@/lib/admin/leadsRepository";
+import { LEAD_QUEUE_STATUS, type LeadRow } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
 type WorkspaceCommandDashboardProps = {
@@ -78,12 +74,13 @@ function deriveSourceLabel(lead: LeadRow): string {
 function formatPipelineStatus(lead: LeadRow): string {
   const status = lead.status?.trim().toLowerCase() ?? "";
   const queueStatus = lead.queue_status?.trim().toLowerCase() ?? "";
-  if (queueStatus === LEAD_QUEUE_STATUS.PAUSED) return "Paused";
+  if (status === "replied") {
+    return queueStatus === LEAD_QUEUE_STATUS.PAUSED ? "Replied · Paused" : "Replied";
+  }
   if (status === "closed_won") return "Closed Won";
   if (status === "follow_up") return "Follow-Up";
   if (status === "form_filled") return "Form Filled";
   if (status === "positive_reply") return "Positive Reply";
-  if (status === "replied") return "Replied";
   if (status === "qualified") return "Qualified";
   if (lead.is_hot_lead) return "Hot Lead";
   return status ? status.replace(/_/g, " ") : "—";
@@ -171,7 +168,7 @@ export function WorkspaceCommandDashboard({
       .from("leads")
       .select("*")
       .eq("client_id", clientId)
-      .or(buildManualFollowUpLeadsFilter())
+      .eq("status", "replied")
       .order("last_activity", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
 
@@ -247,7 +244,7 @@ export function WorkspaceCommandDashboard({
             High-Intent Leads (Ready to Close)
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Inbound replies and paused outreach — updated automatically from the webhook.
+            Leads with status replied — captured automatically by the inbound webhook.
           </p>
         </header>
         <div className="overflow-x-auto">
@@ -284,13 +281,13 @@ export function WorkspaceCommandDashboard({
               {isLeadsLoading ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-500">
-                    Loading replied and paused leads…
+                    Loading replied leads…
                   </td>
                 </tr>
               ) : highIntentLeads.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-500">
-                    No replied or paused leads yet.
+                    No replied leads yet.
                   </td>
                 </tr>
               ) : (
