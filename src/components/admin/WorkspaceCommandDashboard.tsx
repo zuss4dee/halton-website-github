@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { HighIntentLeadDrawer } from "@/components/admin/HighIntentLeadDrawer";
 import {
-  buildHighIntentLeadsFilter,
+  buildManualFollowUpLeadsFilter,
+  LEAD_QUEUE_STATUS,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
@@ -15,6 +16,7 @@ type DashboardMetrics = {
   totalLeads: number;
   pendingReview: number;
   sentEmails: number;
+  repliedLeads: number;
   totalAgentOps: number;
   isLoading: boolean;
 };
@@ -23,16 +25,24 @@ const INITIAL_METRICS: DashboardMetrics = {
   totalLeads: 0,
   pendingReview: 0,
   sentEmails: 0,
+  repliedLeads: 0,
   totalAgentOps: 0,
   isLoading: true,
 };
 
 type MetricCardProps = {
   descriptor: string;
-  value: number;
+  value?: number;
+  displayValue?: string;
   isLoading: boolean;
   caption: string;
 };
+
+function formatReplyRate(replied: number, sent: number): string {
+  if (sent <= 0) return "—";
+  const rate = (replied / sent) * 100;
+  return `${rate.toFixed(1)}%`;
+}
 
 function formatTableDate(value: string | null | undefined): string {
   if (!value) return "—";
@@ -51,14 +61,24 @@ function formatTableDate(value: string | null | undefined): string {
 
 function deriveSourceLabel(lead: LeadRow): string {
   const status = lead.status?.trim().toLowerCase() ?? "";
+  const queueStatus = lead.queue_status?.trim().toLowerCase() ?? "";
   if (status === "form_filled") return "Form";
-  if (status === "positive_reply" || status === "replied" || lead.is_hot_lead) return "Reply";
+  if (
+    status === "positive_reply" ||
+    status === "replied" ||
+    queueStatus === LEAD_QUEUE_STATUS.PAUSED ||
+    lead.is_hot_lead
+  ) {
+    return "Reply";
+  }
   if (status === "qualified") return "Qualified";
   return "Reply";
 }
 
 function formatPipelineStatus(lead: LeadRow): string {
   const status = lead.status?.trim().toLowerCase() ?? "";
+  const queueStatus = lead.queue_status?.trim().toLowerCase() ?? "";
+  if (queueStatus === LEAD_QUEUE_STATUS.PAUSED) return "Paused";
   if (status === "closed_won") return "Closed Won";
   if (status === "follow_up") return "Follow-Up";
   if (status === "form_filled") return "Form Filled";
@@ -66,10 +86,14 @@ function formatPipelineStatus(lead: LeadRow): string {
   if (status === "replied") return "Replied";
   if (status === "qualified") return "Qualified";
   if (lead.is_hot_lead) return "Hot Lead";
-  return status ? status.replace(/_/g, " ") : "High Intent";
+  return status ? status.replace(/_/g, " ") : "—";
 }
 
-function MetricCard({ descriptor, value, isLoading, caption }: MetricCardProps) {
+function MetricCard({ descriptor, value, displayValue, isLoading, caption }: MetricCardProps) {
+  const renderedValue =
+    displayValue ??
+    (typeof value === "number" ? value.toLocaleString() : "—");
+
   return (
     <article className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-colors hover:border-gray-300">
       <header className="border-b border-gray-100 pb-3">
@@ -79,7 +103,7 @@ function MetricCard({ descriptor, value, isLoading, caption }: MetricCardProps) 
         {isLoading ? (
           <span className="text-gray-400">—</span>
         ) : (
-          <span className="font-semibold text-emerald-600">{value.toLocaleString()}</span>
+          <span className="font-semibold text-emerald-600">{renderedValue}</span>
         )}
       </p>
       <span className="mt-2 block text-xs text-gray-500">{caption}</span>
@@ -98,7 +122,7 @@ export function WorkspaceCommandDashboard({
   const fetchMetrics = useCallback(async () => {
     setMetrics((prev) => ({ ...prev, isLoading: true }));
 
-    const [leads, pending, sent, agentOps] = await Promise.all([
+    const [leads, pending, sent, replied, agentOps] = await Promise.all([
       supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
@@ -114,6 +138,11 @@ export function WorkspaceCommandDashboard({
         .eq("client_id", clientId)
         .eq("queue_status", "sent"),
       supabase
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .eq("client_id", clientId)
+        .eq("status", "replied"),
+      supabase
         .from("agent_logs")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId),
@@ -122,12 +151,14 @@ export function WorkspaceCommandDashboard({
     if (leads.error) console.error("DASHBOARD leads count:", leads.error);
     if (pending.error) console.error("DASHBOARD pending count:", pending.error);
     if (sent.error) console.error("DASHBOARD sent count:", sent.error);
+    if (replied.error) console.error("DASHBOARD replied count:", replied.error);
     if (agentOps.error) console.error("DASHBOARD agent_logs count:", agentOps.error);
 
     setMetrics({
       totalLeads: leads.count ?? 0,
       pendingReview: pending.count ?? 0,
       sentEmails: sent.count ?? 0,
+      repliedLeads: replied.count ?? 0,
       totalAgentOps: agentOps.count ?? 0,
       isLoading: false,
     });
@@ -140,7 +171,7 @@ export function WorkspaceCommandDashboard({
       .from("leads")
       .select("*")
       .eq("client_id", clientId)
-      .or(buildHighIntentLeadsFilter())
+      .or(buildManualFollowUpLeadsFilter())
       .order("last_activity", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
 
@@ -173,7 +204,17 @@ export function WorkspaceCommandDashboard({
         <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
       </header>
 
-      <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          descriptor="Reply Rate"
+          displayValue={
+            metrics.isLoading
+              ? undefined
+              : formatReplyRate(metrics.repliedLeads, metrics.sentEmails)
+          }
+          isLoading={metrics.isLoading}
+          caption={`${metrics.repliedLeads.toLocaleString()} replied / ${metrics.sentEmails.toLocaleString()} emails sent`}
+        />
         <MetricCard
           descriptor="Total Prospects"
           value={metrics.totalLeads}
@@ -205,6 +246,9 @@ export function WorkspaceCommandDashboard({
           <h2 className="font-display text-lg tracking-tight text-gray-900">
             High-Intent Leads (Ready to Close)
           </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Inbound replies and paused outreach — updated automatically from the webhook.
+          </p>
         </header>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
@@ -240,13 +284,13 @@ export function WorkspaceCommandDashboard({
               {isLeadsLoading ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-500">
-                    Loading high-intent leads…
+                    Loading replied and paused leads…
                   </td>
                 </tr>
               ) : highIntentLeads.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-500">
-                    No high-intent leads yet.
+                    No replied or paused leads yet.
                   </td>
                 </tr>
               ) : (

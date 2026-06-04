@@ -30,6 +30,11 @@ export function buildHighIntentLeadsFilter(): string {
   return `is_hot_lead.eq.true,${statusFilters}`;
 }
 
+/** Inbound webhook intercepts — replied or paused for manual follow-up */
+export function buildManualFollowUpLeadsFilter(): string {
+  return `status.eq.replied,queue_status.eq.${LEAD_QUEUE_STATUS.PAUSED}`;
+}
+
 export type LeadRow = {
   id: string;
   client_id?: string | null;
