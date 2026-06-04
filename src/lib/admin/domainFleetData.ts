@@ -1,49 +1,43 @@
-import type { ClientRow } from "@/lib/admin/clientsRepository";
-import { supabase } from "@/lib/supabase";
+import type { DomainFleetRow } from "@/lib/admin/domainFleetService";
 
-export type DomainFleetRow = {
-  id: string;
-  domain: string;
-  linkedClient: string;
-  status: string;
-};
+export type { DomainFleetRow, DnsStatusLabel } from "@/lib/admin/domainFleetService";
 
 export type DomainFleetPayload = {
   rows: DomainFleetRow[];
+  checkedAt: string | null;
   error: string | null;
-  source: "clients.sending_domain";
 };
 
-function formatDomainStatus(row: ClientRow): string {
-  const infra = row.infrastructure_status?.trim();
-  if (infra) return infra.replace(/_/g, " ").toUpperCase();
-  return "ACTIVE";
-}
-
-export async function fetchDomainFleetData(): Promise<DomainFleetPayload> {
-  const { data, error } = await supabase
-    .from("clients")
-    .select("id, company_name, sending_domain, infrastructure_status")
-    .order("company_name", { ascending: true });
-
-  if (error) {
-    console.error("[domain-fleet] clients:", error);
-    return { rows: [], error: error.message, source: "clients.sending_domain" };
-  }
-
-  const clients = (data as ClientRow[]) ?? [];
-
-  const rows: DomainFleetRow[] = clients
-    .filter((c) => c.id)
-    .map((client) => {
-      const domain = client.sending_domain?.trim();
-      return {
-        id: client.id!,
-        domain: domain || "—",
-        linkedClient: client.company_name?.trim() || "—",
-        status: domain ? formatDomainStatus(client) : "UNASSIGNED",
-      };
+export async function fetchDomainFleetFromApi(): Promise<DomainFleetPayload> {
+  try {
+    const response = await fetch("/api/admin/domains", {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
     });
 
-  return { rows, error: null, source: "clients.sending_domain" };
+    const body = (await response.json()) as {
+      ok?: boolean;
+      rows?: DomainFleetRow[];
+      checkedAt?: string;
+      error?: string;
+    };
+
+    if (!response.ok) {
+      return {
+        rows: [],
+        checkedAt: null,
+        error: body.error ?? `Request failed (${response.status}).`,
+      };
+    }
+
+    return {
+      rows: body.rows ?? [],
+      checkedAt: body.checkedAt ?? null,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Domain fleet request failed.";
+    return { rows: [], checkedAt: null, error: message };
+  }
 }

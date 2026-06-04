@@ -220,11 +220,13 @@ export async function handleResendInbound(
     inbound_received_at: now,
   };
 
+  // Kill switch: halt automated sequence cron (queue_status = active) on inbound reply.
   const { error: updateError } = await supabase
     .from("leads")
     .update({
       status: "replied",
-      queue_status: LEAD_QUEUE_STATUS.PAUSED,
+      queue_status: LEAD_QUEUE_STATUS.COMPLETED,
+      next_send_date: null,
       is_hot_lead: true,
       last_activity: now,
       form_data,
@@ -235,6 +237,15 @@ export async function handleResendInbound(
     console.error("[api/inbound/resend] Lead update failed:", updateError.message);
     return { received: true, matched: false, from: fromEmail, subject };
   }
+
+  console.info("[api/inbound/resend] Sequence kill switch applied — lead marked replied + completed", {
+    leadId: lead.id,
+    clientId: lead.client_id,
+    from: fromEmail,
+    subject,
+    status: "replied",
+    queueStatus: LEAD_QUEUE_STATUS.COMPLETED,
+  });
 
   if (replyText) {
     const { error: replyError } = await supabase.from("replies").insert({
@@ -251,12 +262,6 @@ export async function handleResendInbound(
     prospectEmail: lead.email ?? fromEmail,
     subject,
     replyText,
-  });
-
-  console.info("[api/inbound/resend] Halted sequence for lead", {
-    leadId: lead.id,
-    from: fromEmail,
-    subject,
   });
 
   return {

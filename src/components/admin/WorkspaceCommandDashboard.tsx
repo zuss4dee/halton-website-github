@@ -46,7 +46,9 @@ function formatPipelineStatus(lead: LeadRow): string {
   const status = lead.status?.trim().toLowerCase() ?? "";
   const queueStatus = lead.queue_status?.trim().toLowerCase() ?? "";
   if (status === "replied") {
-    return queueStatus === LEAD_QUEUE_STATUS.PAUSED ? "Replied · Paused" : "Replied";
+    if (queueStatus === LEAD_QUEUE_STATUS.COMPLETED) return "Replied · Sequence stopped";
+    if (queueStatus === LEAD_QUEUE_STATUS.PAUSED) return "Replied · Paused";
+    return "Replied";
   }
   if (status === "closed_won") return "Closed Won";
   if (status === "follow_up") return "Follow-Up";

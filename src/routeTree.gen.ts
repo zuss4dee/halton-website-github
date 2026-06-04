@@ -37,6 +37,7 @@ import { Route as ApiInboundResendRouteImport } from './routes/api/inbound/resen
 import { Route as ApiCronSweeperRouteImport } from './routes/api/cron/sweeper'
 import { Route as ApiCronProcessOutboundRouteImport } from './routes/api/cron/process-outbound'
 import { Route as ApiAdminOnboardClientRouteImport } from './routes/api/admin/onboard-client'
+import { Route as ApiAdminDomainsRouteImport } from './routes/api/admin/domains'
 import { Route as AdminClientsClientSlugRouteImport } from './routes/admin/clients.$clientSlug'
 import { Route as AdminClientIdRouteImport } from './routes/admin/client.$id'
 import { Route as AdminClientIdIndexRouteImport } from './routes/admin/client.$id.index'
@@ -193,6 +194,11 @@ const ApiAdminOnboardClientRoute = ApiAdminOnboardClientRouteImport.update({
   path: '/api/admin/onboard-client',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminDomainsRoute = ApiAdminDomainsRouteImport.update({
+  id: '/api/admin/domains',
+  path: '/api/admin/domains',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminClientsClientSlugRoute = AdminClientsClientSlugRouteImport.update({
   id: '/clients/$clientSlug',
   path: '/clients/$clientSlug',
@@ -298,6 +304,7 @@ export interface FileRoutesByFullPath {
   '/workspace/': typeof WorkspaceIndexRoute
   '/admin/client/$id': typeof AdminClientIdRouteWithChildren
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/api/admin/domains': typeof ApiAdminDomainsRoute
   '/api/admin/onboard-client': typeof ApiAdminOnboardClientRoute
   '/api/cron/process-outbound': typeof ApiCronProcessOutboundRoute
   '/api/cron/sweeper': typeof ApiCronSweeperRoute
@@ -340,6 +347,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/api/admin/domains': typeof ApiAdminDomainsRoute
   '/api/admin/onboard-client': typeof ApiAdminOnboardClientRoute
   '/api/cron/process-outbound': typeof ApiCronProcessOutboundRoute
   '/api/cron/sweeper': typeof ApiCronSweeperRoute
@@ -386,6 +394,7 @@ export interface FileRoutesById {
   '/workspace/': typeof WorkspaceIndexRoute
   '/admin/client/$id': typeof AdminClientIdRouteWithChildren
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/api/admin/domains': typeof ApiAdminDomainsRoute
   '/api/admin/onboard-client': typeof ApiAdminOnboardClientRoute
   '/api/cron/process-outbound': typeof ApiCronProcessOutboundRoute
   '/api/cron/sweeper': typeof ApiCronSweeperRoute
@@ -433,6 +442,7 @@ export interface FileRouteTypes {
     | '/workspace/'
     | '/admin/client/$id'
     | '/admin/clients/$clientSlug'
+    | '/api/admin/domains'
     | '/api/admin/onboard-client'
     | '/api/cron/process-outbound'
     | '/api/cron/sweeper'
@@ -475,6 +485,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/workspace'
     | '/admin/clients/$clientSlug'
+    | '/api/admin/domains'
     | '/api/admin/onboard-client'
     | '/api/cron/process-outbound'
     | '/api/cron/sweeper'
@@ -520,6 +531,7 @@ export interface FileRouteTypes {
     | '/workspace/'
     | '/admin/client/$id'
     | '/admin/clients/$clientSlug'
+    | '/api/admin/domains'
     | '/api/admin/onboard-client'
     | '/api/cron/process-outbound'
     | '/api/cron/sweeper'
@@ -551,6 +563,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   ApiAgentRoute: typeof ApiAgentRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiAdminDomainsRoute: typeof ApiAdminDomainsRoute
   ApiAdminOnboardClientRoute: typeof ApiAdminOnboardClientRoute
   ApiCronProcessOutboundRoute: typeof ApiCronProcessOutboundRoute
   ApiCronSweeperRoute: typeof ApiCronSweeperRoute
@@ -757,6 +770,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminOnboardClientRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/domains': {
+      id: '/api/admin/domains'
+      path: '/api/admin/domains'
+      fullPath: '/api/admin/domains'
+      preLoaderRoute: typeof ApiAdminDomainsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/clients/$clientSlug': {
       id: '/admin/clients/$clientSlug'
       path: '/clients/$clientSlug'
@@ -961,6 +981,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   ApiAgentRoute: ApiAgentRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiAdminDomainsRoute: ApiAdminDomainsRoute,
   ApiAdminOnboardClientRoute: ApiAdminOnboardClientRoute,
   ApiCronProcessOutboundRoute: ApiCronProcessOutboundRoute,
   ApiCronSweeperRoute: ApiCronSweeperRoute,
