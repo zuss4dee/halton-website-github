@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AdminPageHeader } from "@/components/admin/AdminBrutalist";
 import { EmailTemplateEditorDrawer } from "@/components/admin/EmailTemplateEditorDrawer";
 import {
   createEmailTemplate,
@@ -10,16 +11,17 @@ import {
 
 type EmailTemplatesUIProps = {
   clientId: string;
+  clientName?: string | null;
 };
 
 function previewSubject(subject: string, maxLength = 72): string {
   const normalized = subject.replace(/\s+/g, " ").trim();
-  if (!normalized) return "No subject line";
+  if (!normalized) return "NO_SUBJECT";
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-export function EmailTemplatesUI({ clientId }: EmailTemplatesUIProps) {
+export function EmailTemplatesUI({ clientId, clientName }: EmailTemplatesUIProps) {
   const workspaceClientId = clientId.trim();
 
   const [templates, setTemplates] = useState<EmailTemplateRow[]>([]);
@@ -118,68 +120,76 @@ export function EmailTemplatesUI({ clientId }: EmailTemplatesUIProps) {
   };
 
   return (
-    <section>
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Template Library</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Manage base email frameworks and follow-up structures for the AI.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          disabled={!workspaceClientId}
-          className="shrink-0 rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
-        >
-          + Create Template
-        </button>
+    <section className="space-y-10">
+      <AdminPageHeader
+        code="03b // COPY_LIBRARY"
+        title="Copy Library"
+        description={
+          clientName
+            ? `${clientName} · Reusable Snippet Vault`
+            : "Reusable Snippet Vault"
+        }
+        trailing={
+          <button
+            type="button"
+            onClick={openCreate}
+            disabled={!workspaceClientId}
+            className="shrink-0 border border-ink bg-ink px-4 py-2.5 font-mono text-[10px] tracking-[0.16em] text-paper uppercase transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            + New Snippet
+          </button>
+        }
+      />
+
+      <div
+        className="border-2 border-ink px-4 py-4 font-mono text-[10px] leading-relaxed tracking-[0.08em] text-ink uppercase"
+        role="note"
+      >
+        <span className="text-ink">System Note:</span>{" "}
+        These templates are for workflow nodes and ad-hoc drops. Automated cold email campaigns
+        strictly use the{" "}
+        <span className="bg-ink px-1 text-paper">AUTOMATED_SEQUENCE</span> tab.
       </div>
 
       {errorMessage ? (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          {errorMessage}
+        <p className="font-mono text-[11px] tracking-[0.12em] text-ink uppercase" role="alert">
+          Error: {errorMessage}
         </p>
       ) : null}
 
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="animate-pulse rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
-            >
-              <div className="h-5 w-2/5 rounded bg-gray-200" />
-              <div className="mt-3 h-4 w-4/5 rounded bg-gray-100" />
-            </div>
-          ))}
-        </div>
+        <p className="font-mono text-[11px] tracking-[0.2em] text-ink-soft uppercase">
+          Loading snippets…
+        </p>
       ) : templates.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 px-6 py-12 text-center">
-          <p className="text-sm text-gray-500">No templates yet.</p>
+        <div className="border border-hairline px-6 py-12 text-center">
+          <p className="font-mono text-[11px] tracking-[0.14em] text-ink-soft uppercase">
+            No snippets in vault
+          </p>
           <button
             type="button"
             onClick={openCreate}
-            className="mt-4 text-sm font-medium text-gray-900 underline-offset-2 hover:underline"
+            className="mt-6 border border-ink px-4 py-2 font-mono text-[10px] tracking-[0.16em] text-ink uppercase transition-colors hover:bg-ink hover:text-paper"
           >
-            Create your first template
+            Create First Snippet
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {templates.map((template) => (
-            <article
-              key={template.id}
-              className="flex flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
-            >
-              <h3 className="font-semibold text-gray-900">{template.name}</h3>
-              <p className="mt-2 text-sm text-gray-500">{previewSubject(template.subject)}</p>
-              <div className="mt-5 flex gap-4 border-t border-gray-100 pt-4">
+            <article key={template.id} className="flex flex-col border border-hairline p-5">
+              <h3 className="font-mono text-[12px] tracking-[0.12em] text-ink uppercase">
+                {template.name}
+              </h3>
+              <p className="mt-3 font-mono text-[10px] leading-relaxed tracking-[0.06em] text-ink-soft">
+                {previewSubject(template.subject)}
+              </p>
+              <div className="mt-6 flex gap-4 border-t border-hairline pt-4">
                 <button
                   type="button"
                   disabled={deletingId === template.id || isSaving}
                   onClick={() => openEdit(template)}
-                  className="text-sm text-gray-500 transition-colors hover:text-gray-900 disabled:opacity-40"
+                  className="font-mono text-[10px] tracking-[0.14em] text-ink-soft uppercase transition-colors hover:text-ink disabled:opacity-40"
                 >
                   Edit
                 </button>
@@ -187,7 +197,7 @@ export function EmailTemplatesUI({ clientId }: EmailTemplatesUIProps) {
                   type="button"
                   disabled={deletingId === template.id || isSaving}
                   onClick={() => void handleDelete(template)}
-                  className="text-sm text-gray-500 transition-colors hover:text-gray-900 disabled:opacity-40"
+                  className="font-mono text-[10px] tracking-[0.14em] text-ink-soft uppercase transition-colors hover:text-ink disabled:opacity-40"
                 >
                   {deletingId === template.id ? "Deleting…" : "Delete"}
                 </button>

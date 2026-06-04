@@ -48,6 +48,8 @@ async function resolveSession(request: Request): Promise<{
   supabase: SupabaseClient;
 }> {
   const { supabase, getPendingCookies } = createServerAuthClient(request);
+  // Refresh session cookies before validating the user (SSR + middleware).
+  await supabase.auth.getSession();
   const {
     data: { user },
     error,
@@ -116,6 +118,11 @@ async function guardRedirect(
   }
 
   if (pathname.startsWith("/workspace/")) {
+    // Admins may view any /workspace/:clientId ("View As Client").
+    if (profile.role === "admin") {
+      return { kind: "continue", pendingCookies };
+    }
+
     const routeClientId = workspaceClientIdFromPath(pathname);
     if (profile.role === "client") {
       if (!profile.client_id) {
@@ -141,6 +148,20 @@ async function guardRedirect(
   return { kind: "continue", pendingCookies };
 }
 
+function isHtmlDocumentRequest(request: Request): boolean {
+  const accept = request.headers.get("accept") ?? "";
+  return accept.includes("text/html");
+}
+
+/**
+ * In local dev, SSR auth redirects can fight TanStack client guards when session
+ * cookies are not yet visible on the first document request (ERR_TOO_MANY_REDIRECTS).
+ * API routes and production builds keep full server redirects.
+ */
+function shouldSkipHtmlAuthRedirect(request: Request): boolean {
+  return process.env.NODE_ENV === "development" && isHtmlDocumentRequest(request);
+}
+
 export async function handleAuthRequest(request: Request): Promise<AuthGuardResult> {
   const url = new URL(request.url);
   const pathname = url.pathname;
@@ -157,6 +178,11 @@ export async function handleAuthRequest(request: Request): Promise<AuthGuardResu
   }
 
   const { session, pendingCookies, supabase } = await resolveSession(request);
+
+  if (shouldSkipHtmlAuthRedirect(request)) {
+    return { kind: "continue", pendingCookies };
+  }
+
   const decision = await guardRedirect(pathname, session, pendingCookies, supabase);
 
   return decision ?? { kind: "continue", pendingCookies };

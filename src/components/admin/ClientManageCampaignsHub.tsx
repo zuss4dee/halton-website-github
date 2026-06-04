@@ -5,11 +5,20 @@ import { workspacePath } from "@/lib/admin/adminNav";
 const MODULE_LINKS: {
   code: string;
   label: string;
-  segment: "workflow" | "outbound" | "templates" | "vault" | "settings" | "credentials" | "orchestration";
+  segment:
+    | "workflow"
+    | "sequence"
+    | "outbound"
+    | "templates"
+    | "vault"
+    | "settings"
+    | "credentials"
+    | "orchestration";
 }[] = [
   { code: "01", label: "Campaign Rules", segment: "workflow" },
   { code: "02", label: "Active Pipeline", segment: "outbound" },
-  { code: "03", label: "Email Templates", segment: "templates" },
+  { code: "03a", label: "Automated Sequence", segment: "sequence" },
+  { code: "03b", label: "Copy Library", segment: "templates" },
   { code: "04", label: "Client Assets", segment: "vault" },
   { code: "05", label: "Agent Orchestration", segment: "orchestration" },
   { code: "06", label: "Workspace Settings", segment: "settings" },
@@ -52,11 +61,15 @@ export function ClientManageCampaignsHub() {
           <Link to="/admin" className={actionLinkClassName}>
             [← Command Center]
           </Link>
-          <a href={`/workspace/${clientId}`} className={actionLinkClassName}>
-            [ View As Client ]
-          </a>
           <Link
-            to="/admin/client/$id/dashboard"
+            to="/workspace/$clientId"
+            params={{ clientId }}
+            className={actionLinkClassName}
+          >
+            [ View As Client ]
+          </Link>
+          <Link
+            to="/admin/client/$id"
             params={{ id: clientId }}
             className={actionLinkClassName}
           >

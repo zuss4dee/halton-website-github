@@ -1,6 +1,6 @@
 export type GlobalNavItem = {
   label: string;
-  to: "/admin" | "/admin/vault" | "/admin/logs" | "/admin/credentials" | "/admin/system";
+  to: "/admin" | "/admin/inbox" | "/admin/domains" | "/admin/settings";
 };
 
 export type WorkspaceNavSegment =
@@ -9,6 +9,7 @@ export type WorkspaceNavSegment =
   | "orchestration"
   | "vault"
   | "workflow"
+  | "sequence"
   | "templates"
   | "outbound"
   | "settings"
@@ -20,11 +21,10 @@ export type WorkspaceNavItem = {
 };
 
 export const GLOBAL_NAV: GlobalNavItem[] = [
-  { label: "Index 000 // Tenant Index", to: "/admin" },
-  { label: "Index 001 // Global Vault", to: "/admin/vault" },
-  { label: "Index 002 // System Logs", to: "/admin/logs" },
-  { label: "Index 003 // Credentials", to: "/admin/credentials" },
-  { label: "06 // SYSTEM HEALTH", to: "/admin/system" },
+  { label: "00 // TENANT_INDEX", to: "/admin" },
+  { label: "01 // UNIFIED_INBOX", to: "/admin/inbox" },
+  { label: "02 // DOMAIN_FLEET", to: "/admin/domains" },
+  { label: "03 // SYSTEM_CONFIG", to: "/admin/settings" },
 ];
 
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [
@@ -32,14 +32,18 @@ export const WORKSPACE_NAV: WorkspaceNavItem[] = [
   { label: "< Return to Global", segment: "global" },
   { label: "02 // CLIENT ASSETS", segment: "vault" },
   { label: "03 // CAMPAIGN RULES", segment: "workflow" },
-  { label: "03b // EMAIL TEMPLATES", segment: "templates" },
+  { label: "03a // AUTOMATED_SEQUENCE", segment: "sequence" },
+  { label: "03b // COPY_LIBRARY", segment: "templates" },
   { label: "04 // ACTIVE PIPELINE", segment: "outbound" },
   { label: "05 // SETTINGS", segment: "settings" },
   { label: "06 // CREDENTIALS", segment: "credentials" },
 ];
 
-export function workspacePath(clientId: string, segment: Exclude<WorkspaceNavSegment, "global">): string {
-  if (segment === "dashboard") return `/admin/client/${clientId}/dashboard`;
+export function workspacePath(
+  clientId: string,
+  segment: Exclude<WorkspaceNavSegment, "global">,
+): string {
+  if (segment === "dashboard") return `/admin/client/${clientId}`;
   if (segment === "orchestration") return `/admin/client/${clientId}/orchestration`;
   return `/admin/client/${clientId}/${segment}`;
 }

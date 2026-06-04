@@ -9,24 +9,28 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CookiesRouteImport } from './routes/cookies'
+import { Route as WorkspaceRouteRouteImport } from './routes/workspace/route'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as WorkspaceIndexRouteImport } from './routes/workspace.index'
+import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as WorkspaceClientIdRouteImport } from './routes/workspace.$clientId'
+import { Route as WorkspaceClientIdRouteImport } from './routes/workspace/$clientId'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as AdminVaultRouteImport } from './routes/admin/vault'
 import { Route as AdminSystemRouteImport } from './routes/admin/system'
+import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
 import { Route as AdminLedgerRouteImport } from './routes/admin/ledger'
 import { Route as AdminInfrastructureRouteImport } from './routes/admin/infrastructure'
+import { Route as AdminInboxRouteImport } from './routes/admin/inbox'
+import { Route as AdminDomainsRouteImport } from './routes/admin/domains'
 import { Route as AdminCredentialsRouteImport } from './routes/admin/credentials'
+import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as ApiWebhooksTallyRouteImport } from './routes/api/webhooks/tally'
 import { Route as ApiOutboundSendRouteImport } from './routes/api/outbound/send'
 import { Route as ApiInboundResendRouteImport } from './routes/api/inbound/resend'
@@ -39,6 +43,7 @@ import { Route as AdminClientIdWorkflowRouteImport } from './routes/admin/client
 import { Route as AdminClientIdVaultRouteImport } from './routes/admin/client.$id.vault'
 import { Route as AdminClientIdTemplatesRouteImport } from './routes/admin/client.$id.templates'
 import { Route as AdminClientIdSettingsRouteImport } from './routes/admin/client.$id.settings'
+import { Route as AdminClientIdSequenceRouteImport } from './routes/admin/client.$id.sequence'
 import { Route as AdminClientIdOutboundRouteImport } from './routes/admin/client.$id.outbound'
 import { Route as AdminClientIdOrchestrationRouteImport } from './routes/admin/client.$id.orchestration'
 import { Route as AdminClientIdLeadsRouteImport } from './routes/admin/client.$id.leads'
@@ -47,11 +52,6 @@ import { Route as AdminClientIdDashboardRouteImport } from './routes/admin/clien
 import { Route as AdminClientIdCredentialsRouteImport } from './routes/admin/client.$id.credentials'
 import { Route as AdminClientIdAgentsAgentIdRouteImport } from './routes/admin/client.$id.agents.$agentId'
 
-const WorkspaceRoute = WorkspaceRouteImport.update({
-  id: '/workspace',
-  path: '/workspace',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
@@ -72,6 +72,11 @@ const CookiesRoute = CookiesRouteImport.update({
   path: '/cookies',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspaceRouteRoute = WorkspaceRouteRouteImport.update({
+  id: '/workspace',
+  path: '/workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRouteRoute = AdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -85,7 +90,7 @@ const IndexRoute = IndexRouteImport.update({
 const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => WorkspaceRoute,
+  getParentRoute: () => WorkspaceRouteRoute,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
@@ -95,7 +100,7 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const WorkspaceClientIdRoute = WorkspaceClientIdRouteImport.update({
   id: '/$clientId',
   path: '/$clientId',
-  getParentRoute: () => WorkspaceRoute,
+  getParentRoute: () => WorkspaceRouteRoute,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
   id: '/api/health',
@@ -117,6 +122,11 @@ const AdminSystemRoute = AdminSystemRouteImport.update({
   path: '/system',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminLogsRoute = AdminLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
@@ -132,9 +142,24 @@ const AdminInfrastructureRoute = AdminInfrastructureRouteImport.update({
   path: '/infrastructure',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminInboxRoute = AdminInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminDomainsRoute = AdminDomainsRouteImport.update({
+  id: '/domains',
+  path: '/domains',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminCredentialsRoute = AdminCredentialsRouteImport.update({
   id: '/credentials',
   path: '/credentials',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const ApiWebhooksTallyRoute = ApiWebhooksTallyRouteImport.update({
@@ -197,6 +222,11 @@ const AdminClientIdSettingsRoute = AdminClientIdSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AdminClientIdRoute,
 } as any)
+const AdminClientIdSequenceRoute = AdminClientIdSequenceRouteImport.update({
+  id: '/sequence',
+  path: '/sequence',
+  getParentRoute: () => AdminClientIdRoute,
+} as any)
 const AdminClientIdOutboundRoute = AdminClientIdOutboundRouteImport.update({
   id: '/outbound',
   path: '/outbound',
@@ -240,15 +270,19 @@ const AdminClientIdAgentsAgentIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
+  '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/cookies': typeof CookiesRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
-  '/workspace': typeof WorkspaceRouteWithChildren
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/credentials': typeof AdminCredentialsRoute
+  '/admin/domains': typeof AdminDomainsRoute
+  '/admin/inbox': typeof AdminInboxRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/settings': typeof AdminSettingsRoute
   '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
@@ -269,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
   '/admin/client/$id/outbound': typeof AdminClientIdOutboundRoute
+  '/admin/client/$id/sequence': typeof AdminClientIdSequenceRoute
   '/admin/client/$id/settings': typeof AdminClientIdSettingsRoute
   '/admin/client/$id/templates': typeof AdminClientIdTemplatesRoute
   '/admin/client/$id/vault': typeof AdminClientIdVaultRoute
@@ -282,10 +317,14 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/credentials': typeof AdminCredentialsRoute
+  '/admin/domains': typeof AdminDomainsRoute
+  '/admin/inbox': typeof AdminInboxRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/settings': typeof AdminSettingsRoute
   '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
@@ -305,6 +344,7 @@ export interface FileRoutesByTo {
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
   '/admin/client/$id/outbound': typeof AdminClientIdOutboundRoute
+  '/admin/client/$id/sequence': typeof AdminClientIdSequenceRoute
   '/admin/client/$id/settings': typeof AdminClientIdSettingsRoute
   '/admin/client/$id/templates': typeof AdminClientIdTemplatesRoute
   '/admin/client/$id/vault': typeof AdminClientIdVaultRoute
@@ -316,15 +356,19 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
+  '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/cookies': typeof CookiesRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
-  '/workspace': typeof WorkspaceRouteWithChildren
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/credentials': typeof AdminCredentialsRoute
+  '/admin/domains': typeof AdminDomainsRoute
+  '/admin/inbox': typeof AdminInboxRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
+  '/admin/settings': typeof AdminSettingsRoute
   '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
@@ -345,6 +389,7 @@ export interface FileRoutesById {
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
   '/admin/client/$id/outbound': typeof AdminClientIdOutboundRoute
+  '/admin/client/$id/sequence': typeof AdminClientIdSequenceRoute
   '/admin/client/$id/settings': typeof AdminClientIdSettingsRoute
   '/admin/client/$id/templates': typeof AdminClientIdTemplatesRoute
   '/admin/client/$id/vault': typeof AdminClientIdVaultRoute
@@ -357,15 +402,19 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/workspace'
     | '/cookies'
     | '/login'
     | '/privacy'
     | '/terms'
-    | '/workspace'
+    | '/admin/analytics'
     | '/admin/credentials'
+    | '/admin/domains'
+    | '/admin/inbox'
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
+    | '/admin/settings'
     | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
@@ -386,6 +435,7 @@ export interface FileRouteTypes {
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
     | '/admin/client/$id/outbound'
+    | '/admin/client/$id/sequence'
     | '/admin/client/$id/settings'
     | '/admin/client/$id/templates'
     | '/admin/client/$id/vault'
@@ -399,10 +449,14 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/terms'
+    | '/admin/analytics'
     | '/admin/credentials'
+    | '/admin/domains'
+    | '/admin/inbox'
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
+    | '/admin/settings'
     | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
@@ -422,6 +476,7 @@ export interface FileRouteTypes {
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
     | '/admin/client/$id/outbound'
+    | '/admin/client/$id/sequence'
     | '/admin/client/$id/settings'
     | '/admin/client/$id/templates'
     | '/admin/client/$id/vault'
@@ -432,15 +487,19 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/workspace'
     | '/cookies'
     | '/login'
     | '/privacy'
     | '/terms'
-    | '/workspace'
+    | '/admin/analytics'
     | '/admin/credentials'
+    | '/admin/domains'
+    | '/admin/inbox'
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
+    | '/admin/settings'
     | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
@@ -461,6 +520,7 @@ export interface FileRouteTypes {
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
     | '/admin/client/$id/outbound'
+    | '/admin/client/$id/sequence'
     | '/admin/client/$id/settings'
     | '/admin/client/$id/templates'
     | '/admin/client/$id/vault'
@@ -472,11 +532,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
+  WorkspaceRouteRoute: typeof WorkspaceRouteRouteWithChildren
   CookiesRoute: typeof CookiesRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
-  WorkspaceRoute: typeof WorkspaceRouteWithChildren
   ApiAgentRoute: typeof ApiAgentRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAdminOnboardClientRoute: typeof ApiAdminOnboardClientRoute
@@ -488,13 +548,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/workspace': {
-      id: '/workspace'
-      path: '/workspace'
-      fullPath: '/workspace'
-      preLoaderRoute: typeof WorkspaceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/terms': {
       id: '/terms'
       path: '/terms'
@@ -523,6 +576,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CookiesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspace': {
+      id: '/workspace'
+      path: '/workspace'
+      fullPath: '/workspace'
+      preLoaderRoute: typeof WorkspaceRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -542,7 +602,7 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/workspace/'
       preLoaderRoute: typeof WorkspaceIndexRouteImport
-      parentRoute: typeof WorkspaceRoute
+      parentRoute: typeof WorkspaceRouteRoute
     }
     '/admin/': {
       id: '/admin/'
@@ -556,7 +616,7 @@ declare module '@tanstack/react-router' {
       path: '/$clientId'
       fullPath: '/workspace/$clientId'
       preLoaderRoute: typeof WorkspaceClientIdRouteImport
-      parentRoute: typeof WorkspaceRoute
+      parentRoute: typeof WorkspaceRouteRoute
     }
     '/api/health': {
       id: '/api/health'
@@ -586,6 +646,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSystemRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/settings': {
+      id: '/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/logs': {
       id: '/admin/logs'
       path: '/logs'
@@ -607,11 +674,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminInfrastructureRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/inbox': {
+      id: '/admin/inbox'
+      path: '/inbox'
+      fullPath: '/admin/inbox'
+      preLoaderRoute: typeof AdminInboxRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/domains': {
+      id: '/admin/domains'
+      path: '/domains'
+      fullPath: '/admin/domains'
+      preLoaderRoute: typeof AdminDomainsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/credentials': {
       id: '/admin/credentials'
       path: '/credentials'
       fullPath: '/admin/credentials'
       preLoaderRoute: typeof AdminCredentialsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/analytics': {
+      id: '/admin/analytics'
+      path: '/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AdminAnalyticsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/api/webhooks/tally': {
@@ -698,6 +786,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminClientIdSettingsRouteImport
       parentRoute: typeof AdminClientIdRoute
     }
+    '/admin/client/$id/sequence': {
+      id: '/admin/client/$id/sequence'
+      path: '/sequence'
+      fullPath: '/admin/client/$id/sequence'
+      preLoaderRoute: typeof AdminClientIdSequenceRouteImport
+      parentRoute: typeof AdminClientIdRoute
+    }
     '/admin/client/$id/outbound': {
       id: '/admin/client/$id/outbound'
       path: '/outbound'
@@ -757,6 +852,7 @@ interface AdminClientIdRouteChildren {
   AdminClientIdLeadsRoute: typeof AdminClientIdLeadsRoute
   AdminClientIdOrchestrationRoute: typeof AdminClientIdOrchestrationRoute
   AdminClientIdOutboundRoute: typeof AdminClientIdOutboundRoute
+  AdminClientIdSequenceRoute: typeof AdminClientIdSequenceRoute
   AdminClientIdSettingsRoute: typeof AdminClientIdSettingsRoute
   AdminClientIdTemplatesRoute: typeof AdminClientIdTemplatesRoute
   AdminClientIdVaultRoute: typeof AdminClientIdVaultRoute
@@ -772,6 +868,7 @@ const AdminClientIdRouteChildren: AdminClientIdRouteChildren = {
   AdminClientIdLeadsRoute: AdminClientIdLeadsRoute,
   AdminClientIdOrchestrationRoute: AdminClientIdOrchestrationRoute,
   AdminClientIdOutboundRoute: AdminClientIdOutboundRoute,
+  AdminClientIdSequenceRoute: AdminClientIdSequenceRoute,
   AdminClientIdSettingsRoute: AdminClientIdSettingsRoute,
   AdminClientIdTemplatesRoute: AdminClientIdTemplatesRoute,
   AdminClientIdVaultRoute: AdminClientIdVaultRoute,
@@ -785,10 +882,14 @@ const AdminClientIdRouteWithChildren = AdminClientIdRoute._addFileChildren(
 )
 
 interface AdminRouteRouteChildren {
+  AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminCredentialsRoute: typeof AdminCredentialsRoute
+  AdminDomainsRoute: typeof AdminDomainsRoute
+  AdminInboxRoute: typeof AdminInboxRoute
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
   AdminLedgerRoute: typeof AdminLedgerRoute
   AdminLogsRoute: typeof AdminLogsRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
   AdminSystemRoute: typeof AdminSystemRoute
   AdminVaultRoute: typeof AdminVaultRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -797,10 +898,14 @@ interface AdminRouteRouteChildren {
 }
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminAnalyticsRoute: AdminAnalyticsRoute,
   AdminCredentialsRoute: AdminCredentialsRoute,
+  AdminDomainsRoute: AdminDomainsRoute,
+  AdminInboxRoute: AdminInboxRoute,
   AdminInfrastructureRoute: AdminInfrastructureRoute,
   AdminLedgerRoute: AdminLedgerRoute,
   AdminLogsRoute: AdminLogsRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
   AdminSystemRoute: AdminSystemRoute,
   AdminVaultRoute: AdminVaultRoute,
   AdminIndexRoute: AdminIndexRoute,
@@ -812,28 +917,28 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
   AdminRouteRouteChildren,
 )
 
-interface WorkspaceRouteChildren {
+interface WorkspaceRouteRouteChildren {
   WorkspaceClientIdRoute: typeof WorkspaceClientIdRoute
   WorkspaceIndexRoute: typeof WorkspaceIndexRoute
 }
 
-const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+const WorkspaceRouteRouteChildren: WorkspaceRouteRouteChildren = {
   WorkspaceClientIdRoute: WorkspaceClientIdRoute,
   WorkspaceIndexRoute: WorkspaceIndexRoute,
 }
 
-const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
-  WorkspaceRouteChildren,
+const WorkspaceRouteRouteWithChildren = WorkspaceRouteRoute._addFileChildren(
+  WorkspaceRouteRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
+  WorkspaceRouteRoute: WorkspaceRouteRouteWithChildren,
   CookiesRoute: CookiesRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
-  WorkspaceRoute: WorkspaceRouteWithChildren,
   ApiAgentRoute: ApiAgentRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiAdminOnboardClientRoute: ApiAdminOnboardClientRoute,

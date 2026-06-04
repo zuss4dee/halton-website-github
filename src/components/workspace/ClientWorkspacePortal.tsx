@@ -11,92 +11,63 @@ type ClientWorkspacePortalProps = {
   clientId: string;
 };
 
-function formatSignalDate(value: string | null | undefined): string {
+function formatReplyDate(value: string | null | undefined): string {
   if (!value) return "—";
   try {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleString("en-GB", {
+    return date.toLocaleDateString("en-GB", {
       day: "numeric",
       month: "short",
       year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   } catch {
     return "—";
   }
 }
 
-type KpiCardProps = {
+type MassiveKpiProps = {
   label: string;
   value: string;
-  caption: string;
   isLoading: boolean;
 };
 
-function KpiCard({ label, value, caption, isLoading }: KpiCardProps) {
+function MassiveKpi({ label, value, isLoading }: MassiveKpiProps) {
   return (
-    <article className="border border-hairline bg-paper px-5 py-5">
-      <header className="border-b border-hairline pb-3">
-        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-ink-soft">
-          {label}
-        </p>
-      </header>
-      <p className="mt-4 font-display text-[clamp(2rem,4vw,3rem)] leading-none tracking-[-0.04em] text-ink">
-        {isLoading ? (
-          <span className="text-ink-soft">—</span>
-        ) : (
-          <span className="tabular-nums">{value}</span>
-        )}
+    <div className="flex min-h-[180px] flex-col justify-between py-2 md:min-h-[220px]">
+      <p className="font-mono text-[11px] tracking-[0.28em] text-ink/50 uppercase">
+        {label}
       </p>
-      <p className="mt-2 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-soft">
-        {caption}
+      <p className="font-display text-[clamp(3rem,12vw,6.5rem)] leading-[0.85] tracking-[-0.05em] text-ink tabular-nums">
+        {isLoading ? "—" : value}
       </p>
-    </article>
-  );
-}
-
-function SignalRow({ lead }: { lead: LiveLeadSignalRow }) {
-  const name = lead.prospect_name?.trim() || "UNKNOWN_PROSPECT";
-  const company = lead.target_company?.trim() || lead.company_name?.trim() || "—";
-  const role = lead.target_role?.trim() || lead.role?.trim() || "—";
-  const email = lead.email?.trim() || "—";
-
-  return (
-    <div className="grid grid-cols-1 gap-4 border-b border-hairline px-4 py-5 last:border-b-0 md:grid-cols-12 md:items-start md:gap-4 md:py-4">
-      <div className="md:col-span-3">
-        <div className="eyebrow mb-1 md:hidden">Prospect</div>
-        <div className="font-mono text-[11px] tracking-[0.1em] uppercase text-ink">{name}</div>
-        <div className="mt-1 font-mono text-[10px] tracking-[0.08em] text-ink-soft">{email}</div>
-      </div>
-      <div className="md:col-span-2">
-        <div className="eyebrow mb-1 md:hidden">Company</div>
-        <div className="font-mono text-[11px] tracking-[0.1em] uppercase text-ink-soft">
-          {company}
-        </div>
-        <div className="mt-1 font-mono text-[10px] text-ink-soft">{role}</div>
-      </div>
-      <div className="md:col-span-2">
-        <div className="eyebrow mb-1 md:hidden">Signal Time</div>
-        <div className="font-mono text-[10px] tracking-[0.1em] uppercase text-ink">
-          {formatSignalDate(lead.last_activity ?? lead.created_at)}
-        </div>
-      </div>
-      <div className="md:col-span-5">
-        <div className="eyebrow mb-1 md:hidden">Inbound Reply</div>
-        {lead.replySubject ? (
-          <div className="mb-2 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft">
-            SUBJ // {lead.replySubject}
-          </div>
-        ) : null}
-        <blockquote className="border-l-2 border-ink pl-3 font-mono text-[11px] leading-relaxed text-ink-soft">
-          {lead.replyPreview || "NO_REPLY_TEXT_CAPTURED"}
-        </blockquote>
-      </div>
     </div>
   );
 }
+
+function LatestReplyRow({ lead }: { lead: LiveLeadSignalRow }) {
+  const name = lead.prospect_name?.trim() || "Unknown";
+  const company =
+    lead.target_company?.trim() || lead.company_name?.trim() || "—";
+  const repliedAt = formatReplyDate(lead.last_activity ?? lead.created_at);
+
+  return (
+    <tr className="group">
+      <td className="py-5 pr-8 font-mono text-sm tracking-[0.06em] text-ink uppercase">
+        {name}
+      </td>
+      <td className="py-5 pr-8 font-mono text-sm tracking-[0.04em] text-ink/70 uppercase">
+        {company}
+      </td>
+      <td className="py-5 text-right font-mono text-sm tracking-[0.08em] text-ink/60 tabular-nums">
+        {repliedAt}
+      </td>
+    </tr>
+  );
+}
+
+const signOutClassName =
+  "font-mono text-[10px] tracking-[0.2em] text-ink/50 uppercase transition-colors hover:text-ink";
 
 export function ClientWorkspacePortal({ clientId }: ClientWorkspacePortalProps) {
   const navigate = useNavigate();
@@ -124,102 +95,113 @@ export function ClientWorkspacePortal({ clientId }: ClientWorkspacePortalProps) 
 
   const client = payload?.client;
   const metrics = payload?.metrics;
-  const signals = payload?.signals ?? [];
+  const replies = payload?.signals ?? [];
   const error = payload?.error;
+  const companyName = client?.company_name?.trim() ?? "YOUR COMPANY";
+
+  const totalOutreach = metrics ? metrics.emailsSent.toLocaleString() : "—";
+  const engagementRate = metrics?.openRatePercent ?? "—";
+  const readyToClose = metrics ? metrics.totalReplies.toLocaleString() : "—";
 
   return (
     <main className="min-h-screen bg-paper text-ink selection:bg-ink selection:text-paper">
-      <div className="mx-auto w-full max-w-6xl px-6 py-10 md:px-10 md:py-14">
-        <header className="border-b border-hairline pb-8">
-          <div className="eyebrow mb-3">Workspace // Client Terminal</div>
-          <h1 className="font-display text-[clamp(2rem,5vw,3.5rem)] leading-[0.9] tracking-[-0.04em]">
-            {isLoading
-              ? "LOADING_WORKSPACE…"
-              : (client?.company_name?.trim() ?? "UNKNOWN_CLIENT")}
-          </h1>
-          <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-            TENANT_ID // {client?.id ?? clientId}
-            {client?.sending_domain ? ` · DOMAIN // ${client.sending_domain}` : ""}
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              disabled={isSigningOut}
-              className="border border-hairline px-3 py-2 font-mono text-[10px] tracking-[0.16em] uppercase text-ink transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
-            >
-              {isSigningOut ? "[ Signing Out… ]" : "[ Sign Out ]"}
-            </button>
+      <div className="mx-auto w-full max-w-6xl px-6 py-12 md:px-12 md:py-16">
+        <header className="mb-16 flex flex-col gap-8 md:mb-20 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-4">
+              <h1 className="font-display text-[clamp(1.75rem,5vw,3.25rem)] leading-[0.92] tracking-[-0.04em] uppercase">
+                {isLoading ? "Loading…" : companyName}
+              </h1>
+              <span className="font-mono text-[11px] tracking-[0.22em] text-ink/40 uppercase">
+                //
+              </span>
+              <span className="flex items-center gap-2 font-mono text-[11px] tracking-[0.22em] text-ink uppercase">
+                <span
+                  className="relative flex h-2.5 w-2.5"
+                  aria-hidden
+                >
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+                Live Signal
+              </span>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={isSigningOut}
+            className={`${signOutClassName} self-start disabled:opacity-40`}
+          >
+            {isSigningOut ? "[ Signing Out… ]" : "[ Sign Out ]"}
+          </button>
         </header>
 
         {error ? (
-          <p className="mt-8 font-mono text-[11px] tracking-[0.14em] uppercase text-red-700">
-            ERROR // {error}
+          <p className="mb-12 font-mono text-[11px] tracking-[0.14em] text-ink/60 uppercase">
+            {error}
           </p>
         ) : null}
 
-        <section className="mt-10">
-          <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            00 // KPI_TELEMETRY
-          </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <KpiCard
-              label="[ Emails Sent ]"
-              value={metrics ? metrics.emailsSent.toLocaleString() : "—"}
-              caption="QUEUE_STATUS // SENT"
-              isLoading={isLoading}
-            />
-            <KpiCard
-              label="[ Open Rate ]"
-              value={metrics?.openRatePercent ?? "—"}
-              caption={metrics?.openRateCaption ?? "—"}
-              isLoading={isLoading}
-            />
-            <KpiCard
-              label="[ Total Replies ]"
-              value={metrics ? metrics.totalReplies.toLocaleString() : "—"}
-              caption="STATUS // REPLIED"
-              isLoading={isLoading}
-            />
-          </div>
+        <section className="mb-20 grid grid-cols-1 gap-12 md:mb-28 md:grid-cols-3 md:gap-8">
+          <MassiveKpi
+            label="Total Outreach"
+            value={totalOutreach}
+            isLoading={isLoading}
+          />
+          <MassiveKpi
+            label="Engagement Rate"
+            value={engagementRate}
+            isLoading={isLoading}
+          />
+          <MassiveKpi
+            label="Ready to Close (Replies)"
+            value={readyToClose}
+            isLoading={isLoading}
+          />
         </section>
 
-        <section className="mt-12 border-t border-hairline pt-10">
-          <h2 className="mb-2 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            01 // LIVE_LEAD_SIGNAL
+        <section>
+          <h2 className="mb-10 font-mono text-[11px] tracking-[0.3em] text-ink/45 uppercase">
+            Latest Replies
           </h2>
-          <p className="mb-6 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-soft">
-            PROSPECTS_WHO_REPLIED_TO_THIS_CLIENT_CAMPAIGN
-          </p>
 
-          <div className="border border-hairline">
-            <div className="hidden border-b border-hairline px-4 py-3 md:grid md:grid-cols-12 md:gap-4">
-              <div className="col-span-3 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-                Prospect
-              </div>
-              <div className="col-span-2 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-                Company
-              </div>
-              <div className="col-span-2 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-                Signal Time
-              </div>
-              <div className="col-span-5 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-                Inbound Reply
-              </div>
-            </div>
-
-            {isLoading ? (
-              <div className="px-4 py-10 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-                SCANNING_INBOUND_SIGNALS…
-              </div>
-            ) : signals.length === 0 ? (
-              <div className="px-4 py-10 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-                NO_LIVE_SIGNALS // AWAITING_REPLIES
-              </div>
-            ) : (
-              signals.map((lead) => <SignalRow key={lead.id} lead={lead} />)
-            )}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px] border-collapse text-left">
+              <thead>
+                <tr className="font-mono text-[10px] tracking-[0.24em] text-ink/35 uppercase">
+                  <th className="pb-4 pr-8 font-normal">Name</th>
+                  <th className="pb-4 pr-8 font-normal">Company</th>
+                  <th className="pb-4 text-right font-normal">Date Replied</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="py-12 font-mono text-[11px] tracking-[0.2em] text-ink/40 uppercase"
+                    >
+                      Loading…
+                    </td>
+                  </tr>
+                ) : replies.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="py-12 font-mono text-[11px] tracking-[0.2em] text-ink/40 uppercase"
+                    >
+                      No replies yet
+                    </td>
+                  </tr>
+                ) : (
+                  replies.map((lead) => (
+                    <LatestReplyRow key={lead.id} lead={lead} />
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
       </div>

@@ -71,7 +71,19 @@ function LoginPage() {
 
     const destination = safeRedirectAfterLogin(redirectAfter, profile);
 
-    await navigate({ href: destination });
+    if (destination.startsWith("/workspace/")) {
+      const workspaceClientId = destination.split("/")[2];
+      if (workspaceClientId) {
+        await navigate({
+          to: "/workspace/$clientId",
+          params: { clientId: workspaceClientId },
+        });
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    await navigate({ to: destination as "/admin" | "/login" });
     setIsSubmitting(false);
   }
 

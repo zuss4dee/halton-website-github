@@ -1,6 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bot, FileText, type LucideIcon } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { GLOBAL_NAV, workspacePath, type WorkspaceNavSegment } from "@/lib/admin/adminNav";
 import { supabase } from "@/lib/supabase";
 
@@ -10,24 +9,19 @@ const UUID_PATTERN =
 const WORKSPACE_SIDEBAR_LINKS: {
   label: string;
   segment: Exclude<WorkspaceNavSegment, "global" | "dashboard">;
-  icon?: LucideIcon;
 }[] = [
-  { label: "Active Pipeline", segment: "outbound" },
-  { label: "Client Assets", segment: "vault" },
-  { label: "Campaign Rules", segment: "workflow" },
-  { label: "Templates", segment: "templates", icon: FileText },
-  { label: "Settings", segment: "settings" },
-  { label: "Credentials", segment: "credentials" },
+  { label: "04 // ACTIVE PIPELINE", segment: "outbound" },
+  { label: "02 // CLIENT ASSETS", segment: "vault" },
+  { label: "03 // CAMPAIGN RULES", segment: "workflow" },
+  { label: "03a // AUTOMATED_SEQUENCE", segment: "sequence" },
+  { label: "03b // COPY_LIBRARY", segment: "templates" },
+  { label: "05 // TENANT SETTINGS", segment: "settings" },
+  { label: "06 // CREDENTIALS", segment: "credentials" },
 ];
 
-function isManageCampaignsPath(pathname: string, clientId: string) {
-  const hubPath = `/admin/client/${clientId}`;
-  return pathname === hubPath || pathname === `${hubPath}/`;
-}
-
-function isDashboardPath(pathname: string, clientId: string) {
-  const dashboardPath = `/admin/client/${clientId}/dashboard`;
-  return pathname === dashboardPath || pathname.startsWith(`${dashboardPath}/`);
+function isClientWorkspaceHome(pathname: string, clientId: string) {
+  const home = `/admin/client/${clientId}`;
+  return pathname === home || pathname === `${home}/`;
 }
 
 function isAgentsPath(pathname: string, clientId: string) {
@@ -42,37 +36,28 @@ function isAgentsPath(pathname: string, clientId: string) {
 function SidebarNavRow({
   to,
   params,
+  search,
   label,
   isActive,
-  badge,
-  icon,
 }: {
   to: string;
   params?: Record<string, string>;
+  search?: Record<string, string | boolean>;
   label: string;
   isActive: boolean;
-  badge?: string;
-  icon?: ReactNode;
 }) {
   return (
     <Link
       to={to}
       params={params}
-      className={`group flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+      search={search}
+      className={`block px-3 py-2.5 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors ${
         isActive
-          ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200"
-          : "text-gray-600 hover:bg-white/80 hover:text-gray-900"
+          ? "bg-ink text-paper"
+          : "text-ink-soft hover:bg-ink/[0.06] hover:text-ink"
       }`}
     >
-      <span className="shrink-0 text-gray-400 group-hover:text-gray-600" aria-hidden>
-        {icon ?? "›"}
-      </span>
-      <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
-      {badge ? (
-        <span className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-emerald-700">
-          {badge}
-        </span>
-      ) : null}
+      {label}
     </Link>
   );
 }
@@ -102,105 +87,69 @@ export function AdminSidebar() {
         : await query.eq("slug", clientId).single();
 
       if (cancelled) return;
-
       if (error) {
         setClientName(null);
         return;
       }
 
-      const name = (data?.company_name as string | null | undefined)?.trim();
-      setClientName(name || null);
+      setClientName((data?.company_name as string | null | undefined)?.trim() || null);
     };
 
     void fetchClientName();
-
     return () => {
       cancelled = true;
     };
   }, [clientId]);
 
-  const workspaceSectionLabel = clientName ?? "Workspace";
-  const isCommandCenterHome =
-    pathname === "/admin" || pathname === "/admin/";
-
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-gray-200 bg-gray-50 md:w-[260px] md:min-w-[260px] md:border-b-0 md:border-r">
-      <div className="flex items-center gap-2.5 px-4 pb-2 pt-5">
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 22 22"
-          fill="none"
-          className="shrink-0 text-gray-900"
-          aria-hidden
-        >
-          <rect x="0.5" y="0.5" width="21" height="21" stroke="currentColor" />
-          <rect x="5" y="5" width="12" height="12" fill="currentColor" />
-        </svg>
-        <div className="min-w-0">
-          <div className="truncate font-mono text-[11px] tracking-[0.18em] text-gray-900">
-            Halton&nbsp;/&nbsp;Works
-          </div>
-          <div className="truncate font-mono text-[10px] tracking-[0.14em] text-gray-500">
-            Command Center
-          </div>
+    <aside className="flex w-full shrink-0 flex-col border-b border-hairline bg-paper md:w-[240px] md:min-w-[240px] md:border-b-0 md:border-r">
+      <div className="border-b border-hairline px-4 py-6">
+        <div className="font-mono text-[10px] tracking-[0.22em] text-ink-soft uppercase">
+          Halton / Works
+        </div>
+        <div className="mt-1 font-display text-lg leading-none tracking-[-0.03em] text-ink">
+          Command Center
         </div>
       </div>
 
-      <div className="px-3 pb-3">
+      <div className="border-b border-hairline px-3 py-3">
         <Link
           to="/admin"
-          className={`block w-full rounded-lg px-4 py-2.5 text-center text-sm font-medium transition-colors ${
-            isCommandCenterHome
-              ? "bg-black text-white shadow-sm hover:bg-gray-800"
-              : "border border-gray-200 bg-white text-gray-700 shadow-sm hover:border-gray-300 hover:bg-gray-50"
-          }`}
+          search={{ onboard: true }}
+          className="block w-full border border-ink bg-ink px-3 py-2.5 text-center font-mono text-[10px] tracking-[0.16em] text-paper uppercase transition-opacity hover:opacity-90"
         >
           + Onboard Client
         </Link>
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4 pt-1">
+      <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
         {isWorkspace && clientId ? (
           <>
-            <p
-              className={`truncate px-3 pb-1 pt-1 font-mono text-[10px] tracking-[0.18em] text-gray-400 ${
-                clientName ? "normal-case" : "uppercase"
-              }`}
-              title={workspaceSectionLabel}
-            >
-              {workspaceSectionLabel}
+            <p className="px-3 py-2 font-mono text-[9px] tracking-[0.2em] text-ink/40 uppercase">
+              Tenant // {clientName ?? clientId.slice(0, 8)}
             </p>
             <Link
               to="/admin"
-              className="mx-1 mb-0.5 block rounded-lg px-3 py-2 text-xs text-gray-400 transition-colors hover:bg-white/60 hover:text-gray-600"
+              className="mx-3 mb-2 block font-mono text-[9px] tracking-[0.16em] text-ink-soft uppercase hover:text-ink"
             >
-              ← Return to Global
+              ← Tenant Index
             </Link>
             <SidebarNavRow
               to="/admin/client/$id"
               params={{ id: clientId }}
-              label="Manage Campaigns"
-              isActive={isManageCampaignsPath(pathname, clientId)}
-            />
-            <SidebarNavRow
-              to="/admin/client/$id/dashboard"
-              params={{ id: clientId }}
-              label="Analytics"
-              isActive={isDashboardPath(pathname, clientId)}
-              badge="LIVE"
+              label="01 // Analytics"
+              isActive={isClientWorkspaceHome(pathname, clientId)}
             />
             <SidebarNavRow
               to="/admin/client/$id/orchestration"
               params={{ id: clientId }}
-              label="Agents"
+              label="02 // Agents"
               isActive={isAgentsPath(pathname, clientId)}
-              icon={<Bot className="h-4 w-4" strokeWidth={1.75} />}
             />
             {WORKSPACE_SIDEBAR_LINKS.map((item) => {
               const href = workspacePath(clientId, item.segment);
-              const isActive = pathname === href || pathname.startsWith(`${href}/`);
-              const Icon = item.icon;
+              const isActive =
+                pathname === href || pathname.startsWith(`${href}/`);
 
               return (
                 <SidebarNavRow
@@ -208,35 +157,26 @@ export function AdminSidebar() {
                   to={href}
                   label={item.label}
                   isActive={isActive}
-                  icon={
-                    Icon ? <Icon className="h-4 w-4" strokeWidth={1.75} /> : undefined
-                  }
                 />
               );
             })}
           </>
         ) : (
-          <>
-            <p className="px-3 pb-1 pt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-gray-400">
-              Platform
-            </p>
-            {GLOBAL_NAV.map((item) => {
-              const isActive =
-                item.to === "/admin"
-                  ? pathname === "/admin" || pathname === "/admin/"
-                  : pathname === item.to || pathname.startsWith(`${item.to}/`);
+          GLOBAL_NAV.map((item) => {
+            const isActive =
+              item.to === "/admin"
+                ? pathname === "/admin" || pathname === "/admin/"
+                : pathname === item.to || pathname.startsWith(`${item.to}/`);
 
-              return (
-                <SidebarNavRow
-                  key={item.label}
-                  to={item.to}
-                  label={item.label}
-                  isActive={isActive}
-                  badge={item.to === "/admin" ? "LIVE" : undefined}
-                />
-              );
-            })}
-          </>
+            return (
+              <SidebarNavRow
+                key={item.label}
+                to={item.to}
+                label={item.label}
+                isActive={isActive}
+              />
+            );
+          })
         )}
       </nav>
     </aside>

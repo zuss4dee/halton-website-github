@@ -4,7 +4,7 @@ import { useClientRoute } from "@/components/admin/ClientRouteContext";
 
 export const Route = createFileRoute("/admin/client/$id/templates")({
   head: ({ params }) => ({
-    meta: [{ title: `Halton/Works — Email Templates ${params.id}` }],
+    meta: [{ title: `Halton/Works — Copy Library ${params.id}` }],
   }),
   component: ClientTemplatesPage,
 });
@@ -17,5 +17,10 @@ function ClientTemplatesPage() {
     return <p className="text-sm text-gray-500">Client context unavailable.</p>;
   }
 
-  return <EmailTemplatesUI clientId={clientId} />;
+  return (
+    <EmailTemplatesUI
+      clientId={clientId}
+      clientName={client.company_name as string | null | undefined}
+    />
+  );
 }

@@ -1,17 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClientManageCampaignsHub } from "@/components/admin/ClientManageCampaignsHub";
+import { useClientRoute } from "@/components/admin/ClientRouteContext";
+import { WorkspaceCommandDashboard } from "@/components/admin/WorkspaceCommandDashboard";
 
 export const Route = createFileRoute("/admin/client/$id/")({
   head: ({ params }) => ({
     meta: [
       {
-        title: `Halton/Works — Manage Campaigns ${params.id}`,
+        title: `Halton/Works — ${params.id} Analytics`,
       },
     ],
   }),
-  component: ClientManageCampaignsPage,
+  component: ClientWorkspaceHomePage,
 });
 
-function ClientManageCampaignsPage() {
-  return <ClientManageCampaignsHub />;
+function ClientWorkspaceHomePage() {
+  const client = useClientRoute();
+
+  if (!client.id) {
+    return (
+      <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
+        CLIENT_CONTEXT_UNAVAILABLE
+      </p>
+    );
+  }
+
+  return (
+    <WorkspaceCommandDashboard
+      clientId={client.id}
+      companyName={client.company_name ?? undefined}
+    />
+  );
 }

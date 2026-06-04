@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  AdminDataTable,
+  AdminKpiCard,
+  AdminPageHeader,
+  formatAdminDate,
+} from "@/components/admin/AdminBrutalist";
 import { HighIntentLeadDrawer } from "@/components/admin/HighIntentLeadDrawer";
 import {
   readInboundReplyFromLead,
@@ -30,33 +36,10 @@ const INITIAL_METRICS: DashboardMetrics = {
   isLoading: true,
 };
 
-type MetricCardProps = {
-  descriptor: string;
-  value?: number;
-  displayValue?: string;
-  isLoading: boolean;
-  caption: string;
-};
-
 function formatReplyRate(replied: number, sent: number): string {
   if (sent <= 0) return "—";
   const rate = (replied / sent) * 100;
   return `${rate.toFixed(1)}%`;
-}
-
-function formatTableDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
 }
 
 function formatPipelineStatus(lead: LeadRow): string {
@@ -72,28 +55,6 @@ function formatPipelineStatus(lead: LeadRow): string {
   if (status === "qualified") return "Qualified";
   if (lead.is_hot_lead) return "Hot Lead";
   return status ? status.replace(/_/g, " ") : "—";
-}
-
-function MetricCard({ descriptor, value, displayValue, isLoading, caption }: MetricCardProps) {
-  const renderedValue =
-    displayValue ??
-    (typeof value === "number" ? value.toLocaleString() : "—");
-
-  return (
-    <article className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-colors hover:border-gray-300">
-      <header className="border-b border-gray-100 pb-3">
-        <p className="text-sm font-medium text-gray-700">{descriptor}</p>
-      </header>
-      <p className="mt-4 text-3xl leading-none tabular-nums tracking-tight sm:text-4xl">
-        {isLoading ? (
-          <span className="text-gray-400">—</span>
-        ) : (
-          <span className="font-semibold text-emerald-600">{renderedValue}</span>
-        )}
-      </p>
-      <span className="mt-2 block text-xs text-gray-500">{caption}</span>
-    </article>
-  );
 }
 
 export function WorkspaceCommandDashboard({
@@ -222,149 +183,110 @@ export function WorkspaceCommandDashboard({
   };
 
   return (
-    <section className="min-h-[60vh]">
-      <header className="mb-10 border-b border-gray-200 pb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
-      </header>
+    <section className="min-h-[60vh] space-y-12">
+      <AdminPageHeader
+        code="01 // ANALYTICS"
+        title="Analytics"
+        description="Workspace telemetry · replied pipeline · agent operations"
+      />
 
-      <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <MetricCard
-          descriptor="Reply Rate"
-          displayValue={
+      <section className="grid grid-cols-1 gap-0 sm:grid-cols-2 lg:grid-cols-3">
+        <AdminKpiCard
+          label="Reply Rate"
+          value={
             metrics.isLoading
-              ? undefined
+              ? "—"
               : formatReplyRate(metrics.repliedLeads, metrics.sentEmails)
           }
           isLoading={metrics.isLoading}
-          caption={`${metrics.repliedLeads.toLocaleString()} replied / ${metrics.sentEmails.toLocaleString()} emails sent`}
         />
-        <MetricCard
-          descriptor="Total Prospects"
-          value={metrics.totalLeads}
+        <AdminKpiCard
+          label="Total Prospects"
+          value={metrics.totalLeads.toLocaleString()}
           isLoading={metrics.isLoading}
-          caption="Total leads scraped/ingested"
         />
-        <MetricCard
-          descriptor="Active Outbound"
-          value={metrics.sentEmails}
+        <AdminKpiCard
+          label="Active Outbound"
+          value={metrics.sentEmails.toLocaleString()}
           isLoading={metrics.isLoading}
-          caption="Prospects in automated sequences"
         />
-        <MetricCard
-          descriptor="Positive Intent"
-          value={metrics.totalAgentOps}
+        <AdminKpiCard
+          label="Agent Operations"
+          value={metrics.totalAgentOps.toLocaleString()}
           isLoading={metrics.isLoading}
-          caption="Form fills and direct replies"
         />
-        <MetricCard
-          descriptor="Closed Won"
-          value={metrics.pendingReview}
+        <AdminKpiCard
+          label="Pending Review"
+          value={metrics.pendingReview.toLocaleString()}
           isLoading={metrics.isLoading}
-          caption="Signed clients / Active revenue"
         />
-      </div>
+        <AdminKpiCard
+          label="Replied Leads"
+          value={metrics.repliedLeads.toLocaleString()}
+          isLoading={metrics.isLoading}
+        />
+      </section>
 
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <header className="border-b border-gray-100 px-5 py-4">
-          <h2 className="font-display text-lg tracking-tight text-gray-900">
-            High-Intent Leads (Ready to Close)
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Leads with status replied — click a row for the full message. Reply preview shows in the table.
-          </p>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th
-                  scope="col"
-                  className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gray-500"
-                >
-                  [ DATE ]
-                </th>
-                <th
-                  scope="col"
-                  className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gray-500"
-                >
-                  [ PROSPECT & COMPANY ]
-                </th>
-                <th
-                  scope="col"
-                  className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gray-500"
-                >
-                  [ REPLY PREVIEW ]
-                </th>
-                <th
-                  scope="col"
-                  className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gray-500"
-                >
-                  [ STATUS ]
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLeadsLoading ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center text-sm text-gray-500">
-                    Loading replied leads…
-                  </td>
-                </tr>
-              ) : highIntentLeads.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center text-sm text-gray-500">
-                    No replied leads yet.
-                  </td>
-                </tr>
+      <AdminDataTable<LeadRow>
+        recordLabel="High-Intent Leads"
+        columns={[
+          {
+            key: "date",
+            header: "Date",
+            render: (lead) => (
+              <span className="text-[10px] tracking-[0.1em] text-ink/55 uppercase tabular-nums">
+                {formatAdminDate(lead.last_activity ?? lead.created_at)}
+              </span>
+            ),
+          },
+          {
+            key: "prospect",
+            header: "Prospect & Company",
+            render: (lead) => {
+              const name = lead.prospect_name?.trim() || "UNKNOWN_PROSPECT";
+              const company =
+                lead.target_company?.trim() || lead.company_name?.trim() || "—";
+              return (
+                <>
+                  <span className="block text-sm tracking-[0.04em] uppercase">{name}</span>
+                  <span className="mt-1 block text-[9px] tracking-[0.12em] text-ink/35 uppercase">
+                    {company}
+                  </span>
+                </>
+              );
+            },
+          },
+          {
+            key: "preview",
+            header: "Reply Preview",
+            render: (lead) => {
+              const replyPreview = resolveReplyPreview(lead);
+              return replyPreview ? (
+                <span className="line-clamp-2 text-[10px] leading-relaxed text-ink/60 uppercase">
+                  {replyPreview}
+                </span>
               ) : (
-                highIntentLeads.map((lead) => {
-                  const name = lead.prospect_name?.trim() || "Unknown Prospect";
-                  const company = lead.target_company?.trim() || lead.company_name?.trim() || "—";
-                  const replyPreview = resolveReplyPreview(lead);
-
-                  return (
-                    <tr
-                      key={lead.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setSelectedLead(lead)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedLead(lead);
-                        }
-                      }}
-                      className="cursor-pointer border-b border-gray-50 transition-colors last:border-b-0 hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none"
-                    >
-                      <td className="px-5 py-4 text-gray-600">
-                        {formatTableDate(lead.last_activity ?? lead.created_at)}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="block font-medium text-gray-900">{name}</span>
-                        <span className="mt-0.5 block text-xs text-gray-500">{company}</span>
-                      </td>
-                      <td className="max-w-xs px-5 py-4 text-gray-600">
-                        {replyPreview ? (
-                          <span className="line-clamp-2 text-sm leading-relaxed italic text-gray-600">
-                            &ldquo;{replyPreview}&rdquo;
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">
-                            No reply text saved — open row or check webhook logs
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 font-mono text-[10px] uppercase tracking-wide text-emerald-700">
-                        {formatPipelineStatus(lead)}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                <span className="text-[9px] text-ink/35 uppercase">No reply text</span>
+              );
+            },
+          },
+          {
+            key: "status",
+            header: "Status",
+            align: "right",
+            render: (lead) => (
+              <span className="text-[10px] tracking-[0.12em] text-ink/55 uppercase">
+                {formatPipelineStatus(lead)}
+              </span>
+            ),
+          },
+        ]}
+        rows={highIntentLeads}
+        rowKey={(lead) => lead.id}
+        isLoading={isLeadsLoading}
+        emptyMessage="No replied leads yet."
+        onRowClick={(lead) => setSelectedLead(lead)}
+      />
 
       <HighIntentLeadDrawer
         lead={selectedLead}
