@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  readInboundReplyFromLead,
+  readInboundSubjectFromLead,
+} from "@/lib/admin/inboundReply";
 import type { LeadRow } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
@@ -65,11 +69,15 @@ export function HighIntentLeadDrawer({
 
       if (cancelled) return;
 
+      const fromFormData = readInboundReplyFromLead(lead);
+
       if (error) {
         console.error("HIGH_INTENT reply fetch:", error);
-        setLatestSignal(lead.generated_copy?.trim() || null);
+        setLatestSignal(fromFormData || lead.generated_copy?.trim() || null);
       } else {
-        setLatestSignal(data?.text?.trim() || lead.generated_copy?.trim() || null);
+        setLatestSignal(
+          data?.text?.trim() || fromFormData || lead.generated_copy?.trim() || null,
+        );
       }
 
       setIsLoadingSignal(false);
@@ -101,13 +109,20 @@ export function HighIntentLeadDrawer({
   const company = lead.target_company?.trim() || lead.company_name?.trim() || "—";
   const role = lead.target_role?.trim() || lead.role?.trim() || "—";
 
+  const inboundSubject = readInboundSubjectFromLead(lead);
+
   const intakeFields = [
     { label: "Email", value: lead.email?.trim() || "—" },
     { label: "Role", value: role },
     { label: "Company", value: company },
+    { label: "Reply subject", value: inboundSubject || "—" },
     { label: "Last activity", value: formatDrawerDate(lead.last_activity ?? lead.created_at) },
     { label: "Source", value: deriveSourceLabel(lead) },
     { label: "Pipeline status", value: lead.status?.trim() || "—" },
+    {
+      label: "Sequence",
+      value: lead.queue_status?.trim() || "—",
+    },
   ];
 
   const updateLeadStatus = async (status: "closed_won" | "follow_up") => {
@@ -184,7 +199,8 @@ export function HighIntentLeadDrawer({
             <blockquote className="mt-4 border border-gray-100 bg-gray-50 p-4 text-sm italic leading-relaxed text-gray-700">
               {isLoadingSignal
                 ? "Loading latest signal…"
-                : latestSignal || "No inbound message on file."}
+                : latestSignal ||
+                  "No inbound message on file. If this lead replied before the latest deploy, re-send a test reply or confirm RESEND_API_KEY is set on production so the webhook can fetch the email body."}
             </blockquote>
           </section>
         </div>

@@ -57,6 +57,7 @@ export type LeadRow = {
   /** @deprecated legacy column */
   status?: string | null;
   email_status?: string | null;
+  form_data?: Record<string, unknown> | null;
   created_at?: string | null;
 };
 

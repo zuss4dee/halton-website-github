@@ -202,6 +202,24 @@ export async function handleResendInbound(
 
   const replyText = await resolveReplyText(payload);
 
+  const { data: existingLead } = await supabase
+    .from("leads")
+    .select("form_data")
+    .eq("id", lead.id)
+    .maybeSingle();
+
+  const priorFormData =
+    existingLead?.form_data && typeof existingLead.form_data === "object"
+      ? (existingLead.form_data as Record<string, unknown>)
+      : {};
+
+  const form_data = {
+    ...priorFormData,
+    inbound_subject: subject || null,
+    inbound_reply: replyText || null,
+    inbound_received_at: now,
+  };
+
   const { error: updateError } = await supabase
     .from("leads")
     .update({
@@ -209,6 +227,7 @@ export async function handleResendInbound(
       queue_status: LEAD_QUEUE_STATUS.PAUSED,
       is_hot_lead: true,
       last_activity: now,
+      form_data,
     })
     .eq("id", lead.id);
 

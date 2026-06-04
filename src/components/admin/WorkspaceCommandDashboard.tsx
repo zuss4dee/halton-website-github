@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { HighIntentLeadDrawer } from "@/components/admin/HighIntentLeadDrawer";
+import {
+  readInboundReplyFromLead,
+  truncateReplyPreview,
+} from "@/lib/admin/inboundReply";
 import { LEAD_QUEUE_STATUS, type LeadRow } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
@@ -55,22 +59,6 @@ function formatTableDate(value: string | null | undefined): string {
   }
 }
 
-function deriveSourceLabel(lead: LeadRow): string {
-  const status = lead.status?.trim().toLowerCase() ?? "";
-  const queueStatus = lead.queue_status?.trim().toLowerCase() ?? "";
-  if (status === "form_filled") return "Form";
-  if (
-    status === "positive_reply" ||
-    status === "replied" ||
-    queueStatus === LEAD_QUEUE_STATUS.PAUSED ||
-    lead.is_hot_lead
-  ) {
-    return "Reply";
-  }
-  if (status === "qualified") return "Qualified";
-  return "Reply";
-}
-
 function formatPipelineStatus(lead: LeadRow): string {
   const status = lead.status?.trim().toLowerCase() ?? "";
   const queueStatus = lead.queue_status?.trim().toLowerCase() ?? "";
@@ -113,8 +101,19 @@ export function WorkspaceCommandDashboard({
 }: WorkspaceCommandDashboardProps) {
   const [metrics, setMetrics] = useState<DashboardMetrics>(INITIAL_METRICS);
   const [highIntentLeads, setHighIntentLeads] = useState<LeadRow[]>([]);
+  const [replyPreviewByLeadId, setReplyPreviewByLeadId] = useState<Record<string, string>>({});
   const [isLeadsLoading, setIsLeadsLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
+
+  const resolveReplyPreview = (lead: LeadRow): string => {
+    const fromLead = readInboundReplyFromLead(lead);
+    if (fromLead) return truncateReplyPreview(fromLead);
+
+    const fromReplies = replyPreviewByLeadId[lead.id];
+    if (fromReplies) return truncateReplyPreview(fromReplies);
+
+    return "";
+  };
 
   const fetchMetrics = useCallback(async () => {
     setMetrics((prev) => ({ ...prev, isLoading: true }));
@@ -175,8 +174,35 @@ export function WorkspaceCommandDashboard({
     if (error) {
       console.error("DASHBOARD high-intent leads:", error);
       setHighIntentLeads([]);
+      setReplyPreviewByLeadId({});
     } else {
-      setHighIntentLeads((data as LeadRow[]) ?? []);
+      const leads = (data as LeadRow[]) ?? [];
+      setHighIntentLeads(leads);
+
+      const leadIds = leads.map((row) => row.id).filter(Boolean);
+      if (leadIds.length === 0) {
+        setReplyPreviewByLeadId({});
+      } else {
+        const { data: replies, error: repliesError } = await supabase
+          .from("replies")
+          .select("lead_id, text, created_at")
+          .in("lead_id", leadIds)
+          .order("created_at", { ascending: false });
+
+        if (repliesError) {
+          console.error("DASHBOARD reply previews:", repliesError);
+          setReplyPreviewByLeadId({});
+        } else {
+          const previewMap: Record<string, string> = {};
+          for (const row of replies ?? []) {
+            const leadId = row.lead_id as string;
+            if (!leadId || previewMap[leadId]) continue;
+            const text = typeof row.text === "string" ? row.text.trim() : "";
+            if (text) previewMap[leadId] = text;
+          }
+          setReplyPreviewByLeadId(previewMap);
+        }
+      }
     }
 
     setIsLeadsLoading(false);
@@ -244,7 +270,7 @@ export function WorkspaceCommandDashboard({
             High-Intent Leads (Ready to Close)
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Leads with status replied — captured automatically by the inbound webhook.
+            Leads with status replied — click a row for the full message. Reply preview shows in the table.
           </p>
         </header>
         <div className="overflow-x-auto">
@@ -267,7 +293,7 @@ export function WorkspaceCommandDashboard({
                   scope="col"
                   className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gray-500"
                 >
-                  [ SOURCE (Form / Reply) ]
+                  [ REPLY PREVIEW ]
                 </th>
                 <th
                   scope="col"
@@ -280,13 +306,13 @@ export function WorkspaceCommandDashboard({
             <tbody>
               {isLeadsLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-5 py-10 text-center text-sm text-gray-500">
                     Loading replied leads…
                   </td>
                 </tr>
               ) : highIntentLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-5 py-10 text-center text-sm text-gray-500">
                     No replied leads yet.
                   </td>
                 </tr>
@@ -294,6 +320,7 @@ export function WorkspaceCommandDashboard({
                 highIntentLeads.map((lead) => {
                   const name = lead.prospect_name?.trim() || "Unknown Prospect";
                   const company = lead.target_company?.trim() || lead.company_name?.trim() || "—";
+                  const replyPreview = resolveReplyPreview(lead);
 
                   return (
                     <tr
@@ -316,7 +343,17 @@ export function WorkspaceCommandDashboard({
                         <span className="block font-medium text-gray-900">{name}</span>
                         <span className="mt-0.5 block text-xs text-gray-500">{company}</span>
                       </td>
-                      <td className="px-5 py-4 text-gray-600">{deriveSourceLabel(lead)}</td>
+                      <td className="max-w-xs px-5 py-4 text-gray-600">
+                        {replyPreview ? (
+                          <span className="line-clamp-2 text-sm leading-relaxed italic text-gray-600">
+                            &ldquo;{replyPreview}&rdquo;
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">
+                            No reply text saved — open row or check webhook logs
+                          </span>
+                        )}
+                      </td>
                       <td className="px-5 py-4 font-mono text-[10px] uppercase tracking-wide text-emerald-700">
                         {formatPipelineStatus(lead)}
                       </td>
