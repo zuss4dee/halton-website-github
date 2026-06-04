@@ -13,6 +13,8 @@ export const LEAD_QUEUE_STATUS = {
   SENT: "sent",
   DISCARDED: "discarded",
   PAUSED: "paused",
+  ACTIVE: "active",
+  COMPLETED: "completed",
 } as const;
 
 export type LeadQueueStatus = (typeof LEAD_QUEUE_STATUS)[keyof typeof LEAD_QUEUE_STATUS];
@@ -50,6 +52,8 @@ export type LeadRow = {
   is_hot_lead?: boolean | null;
   last_activity?: string | null;
   current_step?: number | null;
+  current_sequence_step?: number | null;
+  next_send_date?: string | null;
   /** @deprecated legacy column */
   company_name?: string | null;
   /** @deprecated legacy column */

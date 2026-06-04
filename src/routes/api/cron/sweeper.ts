@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { runCronSweeper, verifyCronSecret } from "@/lib/cron/sweeper";
+import { isValidCronRequest } from "@/lib/cron/cronAuth";
+import { runCronSweeper } from "@/lib/cron/sweeper";
 
 async function handleSweeper(request: Request): Promise<Response> {
-  if (!verifyCronSecret(request)) {
+  if (!isValidCronRequest(request)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

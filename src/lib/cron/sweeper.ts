@@ -48,17 +48,6 @@ function isDueForFollowUp(
   return anchorMs < cutoffMs;
 }
 
-export function verifyCronSecret(request: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return false;
-
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader) return false;
-
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  return match?.[1] === secret;
-}
-
 export async function runCronSweeper(): Promise<CronSweeperResult> {
   const followUpDays = resolveFollowUpDays();
   const cutoffMs = Date.now() - followUpDays * 24 * 60 * 60 * 1000;
