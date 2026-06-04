@@ -9,6 +9,7 @@ export type WorkflowNodeData = {
   to?: string;
   subject?: string;
   body?: string;
+  template_id?: string;
 };
 
 export function defaultLabelForType(type: WorkflowExecutorType): string {
@@ -66,7 +67,8 @@ export function dataForExecutorType(
         label,
         to: existing.to ?? "{{steps.trigger-1.email}}",
         subject: existing.subject ?? "Quick question for {{steps.apollo-1.company}}",
-        body: existing.body ?? "{{steps.llm-1.copy}}\n\nLet's chat.\n- Damilare",
+        template_id: existing.template_id,
+        body: existing.body,
       };
   }
 }

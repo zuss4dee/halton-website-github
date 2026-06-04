@@ -4,7 +4,7 @@ import { useClientRoute } from "@/components/admin/ClientRouteContext";
 
 export const Route = createFileRoute("/admin/client/$id/orchestration")({
   head: ({ params }) => ({
-    meta: [{ title: `Halton/Works — Orchestration ${params.id}` }],
+    meta: [{ title: `Halton/Works — Active Agents ${params.id}` }],
   }),
   component: ClientOrchestrationPage,
 });

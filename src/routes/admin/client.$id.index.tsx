@@ -4,7 +4,7 @@ import { WorkspaceCommandDashboard } from "@/components/admin/WorkspaceCommandDa
 
 export const Route = createFileRoute("/admin/client/$id/")({
   head: ({ params }) => ({
-    meta: [{ title: `Halton/Works — Command Dashboard ${params.id}` }],
+    meta: [{ title: `Halton/Works — Analytics ${params.id}` }],
   }),
   component: ClientCommandDashboardPage,
 });
@@ -20,5 +20,10 @@ function ClientCommandDashboardPage() {
     );
   }
 
-  return <WorkspaceCommandDashboard clientId={client.id} />;
+  return (
+    <WorkspaceCommandDashboard
+      clientId={client.id}
+      companyName={client.company_name ?? undefined}
+    />
+  );
 }

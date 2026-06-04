@@ -11,46 +11,66 @@ export type ToolNodeData = {
   to?: string;
   subject?: string;
   body?: string;
+  template_id?: string;
   runtimeStatus?: "idle" | "running" | "complete";
 };
 
 type ExecutorType = WorkflowExecutorType | "copy_reviewer" | string;
 
-function executorBorderClass(executorType?: string) {
+function executorAccentClass(executorType?: string) {
   switch (executorType as ExecutorType) {
     case "trigger":
-      return "border-emerald-800/80";
+      return "border-l-emerald-500";
     case "apollo_search":
-      return "border-cyan-800/80";
+      return "border-l-cyan-500";
     case "deepseek_llm":
-      return "border-violet-800/80";
+      return "border-l-violet-500";
     case "copy_reviewer":
-      return "border-amber-700/80";
+      return "border-l-amber-500";
     case "approval_gate":
-      return "border-rose-800/80";
+      return "border-l-rose-500";
     case "resend_email":
-      return "border-blue-800/80";
+      return "border-l-blue-500";
     default:
-      return "border-gray-700";
+      return "border-l-gray-400";
+  }
+}
+
+function executorBadgeClass(executorType?: string) {
+  switch (executorType as ExecutorType) {
+    case "trigger":
+      return "bg-emerald-50 text-emerald-700";
+    case "apollo_search":
+      return "bg-cyan-50 text-cyan-700";
+    case "deepseek_llm":
+      return "bg-violet-50 text-violet-700";
+    case "copy_reviewer":
+      return "bg-amber-50 text-amber-700";
+    case "approval_gate":
+      return "bg-rose-50 text-rose-700";
+    case "resend_email":
+      return "bg-blue-50 text-blue-700";
+    default:
+      return "bg-gray-100 text-gray-600";
   }
 }
 
 function executorBadgeLabel(executorType?: string) {
   switch (executorType as ExecutorType) {
     case "trigger":
-      return "TRIGGER";
+      return "Trigger";
     case "apollo_search":
-      return "APOLLO";
+      return "Apollo";
     case "deepseek_llm":
-      return "WRITER";
+      return "Writer";
     case "copy_reviewer":
-      return "REVIEW";
+      return "Review";
     case "approval_gate":
-      return "QUEUE";
+      return "Queue";
     case "resend_email":
-      return "RESEND";
+      return "Resend";
     default:
-      return "STEP";
+      return "Step";
   }
 }
 
@@ -90,10 +110,13 @@ function buildContextPreview(executorType: string | undefined, data: ToolNodeDat
       if (!prompt) return "No prompt configured";
       return prompt.length > 30 ? `${prompt.slice(0, 30)}…` : prompt;
     }
-    case "resend_email":
-      return `To: ${data.to?.trim() || "—"}`;
+    case "resend_email": {
+      const to = data.to?.trim() || "—";
+      const templateHint = data.template_id ? " · Base template linked" : "";
+      return `To: ${to}${templateHint}`;
+    }
     case "copy_reviewer":
-      return "Status: Reviewing Draft";
+      return "Status: Reviewing draft";
     case "approval_gate": {
       const body = data.body?.trim() ?? "";
       if (!body) return "Queues reviewer copy";
@@ -111,31 +134,34 @@ function WorkflowToolNodeComponent({ data, type }: NodeProps) {
   const nodeData = (data ?? {}) as ToolNodeData;
   const displayTitle = resolveDisplayTitle(nodeData.label, type);
   const contextPreview = buildContextPreview(type, nodeData);
+  const accentClass = executorAccentClass(type);
   const runtimeClass =
     nodeData.runtimeStatus === "running"
-      ? "border-orange-500 shadow-[0_0_0_1px_rgba(249,115,22,0.5)]"
+      ? "ring-2 ring-orange-300 ring-offset-2 ring-offset-gray-50"
       : nodeData.runtimeStatus === "complete"
-        ? "border-green-500 shadow-[0_0_0_1px_rgba(34,197,94,0.5)]"
-        : executorBorderClass(type);
+        ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-gray-50"
+        : "";
 
   return (
     <div
-      className={`min-w-[220px] max-w-[280px] border bg-gray-950 px-3 py-2.5 shadow-lg transition-colors ${runtimeClass}`}
+      className={`min-w-[220px] max-w-[280px] rounded-lg border border-gray-200 border-l-4 bg-white px-3 py-2.5 shadow-sm transition-shadow ${accentClass} ${runtimeClass}`}
     >
       <Handle
         type="target"
         position={Position.Top}
         isConnectable
-        className="!h-3 !w-3 !border-2 !border-gray-500 !bg-gray-300"
+        className="!h-3 !w-3 !border-2 !border-gray-300 !bg-white"
       />
-      <p className="text-center text-[8px] tracking-[0.18em] text-gray-500 uppercase">
+      <span
+        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${executorBadgeClass(type)}`}
+      >
         {executorBadgeLabel(type)}
-      </p>
-      <p className="pointer-events-none mt-0.5 text-center font-mono text-[11px] leading-snug tracking-[0.04em] text-gray-100">
+      </span>
+      <p className="pointer-events-none mt-1.5 text-sm font-semibold leading-snug text-gray-900">
         {displayTitle}
       </p>
       {contextPreview ? (
-        <p className="pointer-events-none mt-1.5 border-t border-gray-800/80 pt-1.5 text-center text-[9px] leading-relaxed text-gray-500">
+        <p className="pointer-events-none mt-1.5 border-t border-gray-100 pt-1.5 text-xs leading-relaxed text-gray-500">
           {contextPreview}
         </p>
       ) : null}
@@ -143,7 +169,7 @@ function WorkflowToolNodeComponent({ data, type }: NodeProps) {
         type="source"
         position={Position.Bottom}
         isConnectable
-        className="!h-3 !w-3 !border-2 !border-gray-500 !bg-emerald-400"
+        className="!h-3 !w-3 !border-2 !border-gray-300 !bg-emerald-500"
       />
     </div>
   );

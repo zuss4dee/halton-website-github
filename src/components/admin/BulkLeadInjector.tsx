@@ -124,93 +124,82 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
   };
 
   return (
-    <section className="border border-hairline bg-paper">
-      <div className="border-b border-hairline px-4 py-3">
-        <h2 className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-          Bulk Lead Injector
-        </h2>
-        <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft/80">
-          CSV → active DAG → human review queue
-        </p>
-      </div>
-
-      <div className="p-4">
-        <label
+    <section className="w-full">
+      <label
+        onDragLeave={() => setIsDragging(false)}
+        className={`relative flex min-h-[140px] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+          isDragging
+            ? "border-gray-300 bg-gray-100"
+            : "border-gray-200 bg-gray-50 hover:border-gray-300"
+        } ${isProcessing ? "pointer-events-none opacity-50" : ""}`}
+      >
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          disabled={isProcessing}
+          onChange={handleFileChange}
+          onDragOver={handleDragOver}
           onDragLeave={() => setIsDragging(false)}
-          className={`relative flex min-h-[140px] cursor-pointer flex-col items-center justify-center border border-dashed px-4 py-8 text-center transition-colors ${
-            isDragging ? "border-ink bg-ink/5" : "border-hairline hover:border-ink-soft"
-          } ${isProcessing ? "pointer-events-none opacity-50" : ""}`}
+          onDrop={handleDrop}
+          className="absolute inset-0 z-[1] h-full w-full cursor-pointer opacity-0"
+          aria-label="Upload CSV file"
+        />
+        <div className="pointer-events-none relative z-0 flex w-full flex-col items-center">
+          <span className="text-sm text-gray-500">
+            Drop CSV here or click to browse
+          </span>
+          <p className="mt-2 text-sm text-gray-500">
+            Headers: first_name, last_name, email, company, title
+          </p>
+          {fileName ? (
+            <p className="mt-3 text-sm font-medium text-gray-700">
+              Loaded: {fileName} ({parsedLeads.length} rows)
+            </p>
+          ) : null}
+        </div>
+      </label>
+
+      {parseError ? (
+        <p className="mt-3 text-sm text-red-600">{parseError}</p>
+      ) : null}
+
+      {parsedLeads.length > 0 && !isProcessing ? (
+        <button
+          type="button"
+          onClick={() => void handleProcessLeads()}
+          disabled={!workspaceClientId}
+          className="mt-4 w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
         >
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            disabled={isProcessing}
-            onChange={handleFileChange}
-            onDragOver={handleDragOver}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            className="absolute inset-0 z-[1] h-full w-full cursor-pointer opacity-0"
-            aria-label="Upload CSV file"
-          />
-          <div className="pointer-events-none relative z-0 flex w-full flex-col items-center">
-            <span className="font-mono text-[11px] tracking-[0.14em] uppercase text-ink">
-              Drop CSV here or click to browse
-            </span>
-            <p className="mt-2 font-mono text-[10px] tracking-[0.1em] text-ink-soft uppercase">
-              Headers: first_name, last_name, email, company, title
-            </p>
-            {fileName ? (
-              <p className="mt-3 font-mono text-[10px] tracking-[0.1em] text-ink">
-                Loaded: {fileName} ({parsedLeads.length} rows)
-              </p>
-            ) : null}
-          </div>
-        </label>
+          Inject {parsedLeads.length} Leads
+        </button>
+      ) : null}
 
-        {parseError ? (
-          <p className="mt-3 font-mono text-[10px] tracking-[0.12em] text-red-600 uppercase">
-            {parseError}
+      {isProcessing ? (
+        <p className="mt-4 text-sm text-gray-600">
+          Processing {progress.current} / {progress.total} leads…
+        </p>
+      ) : null}
+
+      {summary ? (
+        <div className="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+          <p className="font-medium text-gray-900">
+            Complete: {summary.succeeded}/{summary.total} succeeded
+            {summary.failed > 0 ? ` · ${summary.failed} failed` : ""}
           </p>
-        ) : null}
-
-        {parsedLeads.length > 0 && !isProcessing ? (
-          <button
-            type="button"
-            onClick={() => void handleProcessLeads()}
-            disabled={!workspaceClientId}
-            className="mt-4 w-full border border-ink bg-ink px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-paper transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            Inject {parsedLeads.length} Leads
-          </button>
-        ) : null}
-
-        {isProcessing ? (
-          <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink">
-            Processing {progress.current} / {progress.total} leads…
-          </p>
-        ) : null}
-
-        {summary ? (
-          <div className="mt-4 border border-hairline bg-paper px-3 py-3 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft">
-            <p className="text-ink">
-              Complete: {summary.succeeded}/{summary.total} succeeded
-              {summary.failed > 0 ? ` // ${summary.failed} failed` : ""}
-            </p>
-            {summary.errors.length > 0 ? (
-              <ul className="mt-2 max-h-24 space-y-1 overflow-y-auto text-red-600 normal-case">
-                {summary.errors.slice(0, 5).map((entry) => (
-                  <li key={entry.email}>
-                    {entry.email}: {entry.message}
-                  </li>
-                ))}
-                {summary.errors.length > 5 ? (
-                  <li>…and {summary.errors.length - 5} more</li>
-                ) : null}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+          {summary.errors.length > 0 ? (
+            <ul className="mt-2 max-h-24 space-y-1 overflow-y-auto text-red-600">
+              {summary.errors.slice(0, 5).map((entry) => (
+                <li key={entry.email}>
+                  {entry.email}: {entry.message}
+                </li>
+              ))}
+              {summary.errors.length > 5 ? (
+                <li>…and {summary.errors.length - 5} more</li>
+              ) : null}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

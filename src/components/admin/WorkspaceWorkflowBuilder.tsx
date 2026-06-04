@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -6,7 +5,6 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  Panel,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -40,6 +38,10 @@ import {
   toEnginePayload,
   WORKFLOW_EXECUTOR_TYPES,
 } from "@/lib/admin/workflowsRepository";
+import {
+  listEmailTemplates,
+  type EmailTemplateRow,
+} from "@/lib/admin/emailTemplatesRepository";
 import { supabase } from "@/lib/supabase";
 
 const nodeTypes = Object.fromEntries(
@@ -70,6 +72,8 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
   const [executionResult, setExecutionResult] = useState<WorkflowRunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateRow[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
 
   const nodesRef = useRef<Node[]>([]);
   const edgesRef = useRef<Edge[]>([]);
@@ -180,6 +184,33 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
     };
   }, [clientId, setEdges, setNodes]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTemplates = async () => {
+      setTemplatesLoading(true);
+
+      const result = await listEmailTemplates(clientId);
+
+      if (cancelled) return;
+
+      if ("error" in result) {
+        console.error("EMAIL_TEMPLATES_LOAD_ERROR:", result.error);
+        setEmailTemplates([]);
+      } else {
+        setEmailTemplates(result.templates);
+      }
+
+      setTemplatesLoading(false);
+    };
+
+    void loadTemplates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       setNodes((current) => {
@@ -267,7 +298,7 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
           {
             ...params,
             animated: true,
-            style: { stroke: "#4b5563" },
+            style: { stroke: "#9ca3af" },
           },
           current,
         );
@@ -424,29 +455,54 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
   const sidebarProps = selectedNode ? buildSidebarPropsFromNode(selectedNode) : null;
 
   return (
-    <div className="flex h-[800px] w-full flex-col bg-black font-mono">
-      <div className="border-b border-gray-800 p-4">
-        <Link
-          to="/admin/client/$id"
-          params={{ id: clientId }}
-          className="mb-2 inline-block text-[10px] tracking-[0.14em] uppercase text-gray-500 transition-colors hover:text-gray-300"
-        >
-          &lt; COMMAND_DASHBOARD
-        </Link>
-        <h2 className="text-xs text-gray-300">[ SOP_BUILDER ] - VISUAL LOGIC ENGINE</h2>
-        <p className="mt-1 text-[10px] tracking-[0.12em] uppercase text-gray-500">
-          CLIENT::{clientId}
-          {isHydrated ? " // AUTO_SAVE_ON" : " // LOADING..."}
-          {isRunning ? " // EXECUTING_DAG..." : ""}
-        </p>
-        {loadError ? (
-          <p className="mt-2 text-[10px] uppercase text-amber-500">
-            LOAD_FALLBACK // {loadError}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mb-4 flex w-full shrink-0 items-center justify-between border-b border-gray-100 pb-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Campaign Rules</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Configure automated outbound sequences and logic gates.
           </p>
-        ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={addAutomationStep}
+            disabled={!isHydrated || isRunning}
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            + Add Automation Step
+          </button>
+          <button
+            type="button"
+            onClick={() => void runAutomation()}
+            disabled={!isHydrated || isRunning}
+            className="flex items-center justify-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isRunning ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <span aria-hidden>▶</span>
+            )}
+            Run Automation
+          </button>
+        </div>
       </div>
-      <div className="flex min-h-0 w-full flex-1">
-        <div className="relative min-w-0 flex-1">
+
+      {(loadError || !isHydrated || isRunning) && (
+        <div className="mb-3 shrink-0 rounded-md border border-gray-200 bg-white px-4 py-2 text-xs text-gray-500">
+          {!isHydrated ? "Loading workflow…" : null}
+          {isHydrated && isRunning ? "Running automation…" : null}
+          {loadError ? (
+            <span className="text-amber-700">
+              Could not load saved workflow — using defaults. {loadError}
+            </span>
+          ) : null}
+        </div>
+      )}
+
+      <div className="flex min-h-0 flex-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50/50 shadow-inner">
+        <div className="relative h-full min-h-0 min-w-0 flex-1">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -460,46 +516,21 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
           elementsSelectable
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
           proOptions={{ hideAttribution: true }}
-          colorMode="dark"
-          className={isHydrated ? undefined : "opacity-0"}
+          colorMode="light"
+          className={`!h-full !w-full bg-gray-50/50 ${isHydrated ? undefined : "opacity-0"}`}
         >
-          <Background color="#333" gap={16} />
-          <Controls className="!border-gray-700 !bg-black [&_button]:!border-gray-700 [&_button]:!bg-black [&_button]:!fill-gray-300" />
-          <Panel position="top-right" className="!m-4 flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => void runAutomation()}
-              disabled={!isHydrated || isRunning}
-              className="flex items-center justify-center gap-2 border border-violet-700 bg-violet-950/60 px-4 py-2 text-[10px] tracking-[0.12em] uppercase text-violet-200 transition-colors hover:border-violet-500 hover:bg-violet-900/50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isRunning ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-              ) : (
-                <span aria-hidden>▶</span>
-              )}
-              Run Automation
-            </button>
-            <button
-              type="button"
-              onClick={addAutomationStep}
-              disabled={!isHydrated || isRunning}
-              className="border border-emerald-800 bg-gray-900 px-3 py-2 text-[10px] tracking-[0.12em] uppercase text-emerald-400 transition-colors hover:border-emerald-600 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              + Add Automation Step
-            </button>
-          </Panel>
+          <Background color="#cbd5e1" gap={16} />
+          <Controls className="!rounded-md !border-gray-200 !bg-white !shadow-sm [&_button]:!border-gray-200 [&_button]:!bg-white [&_button]:!fill-gray-600 [&_button:hover]:!bg-gray-50" />
         </ReactFlow>
         {!isHydrated ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black text-[11px] uppercase tracking-[0.14em] text-gray-500">
-            [ HYDRATING_WORKFLOW_GRAPH... ]
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-gray-50/90 text-sm text-gray-500">
+            Loading workflow…
           </div>
         ) : null}
         {isRunning ? (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70">
-            <Loader2 className="h-8 w-8 animate-spin text-violet-400" aria-hidden />
-            <p className="text-[11px] tracking-[0.14em] text-violet-300 uppercase">
-              [ EXECUTING_DAG... ]
-            </p>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/70">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-700" aria-hidden />
+            <p className="text-sm text-gray-600">Running automation…</p>
           </div>
         ) : null}
         </div>
@@ -510,6 +541,8 @@ function WorkflowCanvas({ clientId }: WorkspaceWorkflowBuilderProps) {
             nodeId={sidebarProps.nodeId}
             nodeType={sidebarProps.nodeType}
             nodeData={sidebarProps.nodeData}
+            emailTemplates={emailTemplates}
+            templatesLoading={templatesLoading}
             onPatch={(patch) => patchNode(sidebarProps.nodeId, patch)}
             onDelete={deleteSelectedNode}
           />

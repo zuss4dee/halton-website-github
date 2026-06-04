@@ -28,6 +28,9 @@ const SUGGESTED_KEY_NAMES = [
   "CAL_COM_API_KEY",
 ] as const;
 
+const fieldClassName =
+  "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60";
+
 export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProps) {
   const [credentials, setCredentials] = useState<CredentialListItem[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
@@ -143,28 +146,24 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
     await loadCredentials();
   };
 
+  const emptyStateCopy = workspaceClientId
+    ? "No API keys stored for this workspace."
+    : "No API keys stored yet.";
+
   return (
     <section className="space-y-8">
-      <div className="border border-hairline bg-paper">
-        <div className="border-b border-hairline px-4 py-3">
-          <h2 className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            Add / Update Key
-          </h2>
-        </div>
-
-        <form onSubmit={(event) => void handleSubmit(event)} className="space-y-4 p-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-                Key Name
-              </span>
+              <span className="mb-2 block text-sm font-medium text-gray-700">Key name</span>
               <input
                 list="credential-key-suggestions"
                 value={formName}
                 onChange={(event) => setFormName(event.target.value)}
                 placeholder="RESEND_API_KEY"
                 required
-                className="w-full border border-hairline bg-paper px-3 py-2 font-mono text-[11px] uppercase text-ink outline-none focus:border-ink"
+                className={fieldClassName}
               />
               <datalist id="credential-key-suggestions">
                 {SUGGESTED_KEY_NAMES.map((name) => (
@@ -174,15 +173,13 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
             </label>
 
             <label className="block">
-              <span className="mb-2 block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-                Scope
-              </span>
+              <span className="mb-2 block text-sm font-medium text-gray-700">Scope</span>
               <select
                 value={formScope}
                 onChange={(event) =>
                   setFormScope(event.target.value as CredentialScope)
                 }
-                className="w-full border border-hairline bg-paper px-3 py-2 font-mono text-[11px] tracking-[0.08em] uppercase text-ink outline-none focus:border-ink"
+                className={fieldClassName}
               >
                 <option value="global">Global</option>
                 <option value="client">Client-specific</option>
@@ -192,15 +189,15 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
 
           {formScope === "client" ? (
             <label className="block">
-              <span className="mb-2 block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-                Workspace Client
+              <span className="mb-2 block text-sm font-medium text-gray-700">
+                Workspace client
               </span>
               <select
                 value={formClientId}
                 onChange={(event) => setFormClientId(event.target.value)}
                 required
                 disabled={Boolean(workspaceClientId)}
-                className="w-full border border-hairline bg-paper px-3 py-2 font-mono text-[11px] text-ink outline-none focus:border-ink disabled:opacity-60"
+                className={fieldClassName}
               >
                 <option value="">Select client…</option>
                 {clients.map((client) => (
@@ -213,9 +210,7 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
           ) : null}
 
           <label className="block">
-            <span className="mb-2 block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft">
-              Value
-            </span>
+            <span className="mb-2 block text-sm font-medium text-gray-700">Value</span>
             <div className="relative">
               <input
                 type={showFormValue ? "text" : "password"}
@@ -223,13 +218,13 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
                 onChange={(event) => setFormValue(event.target.value)}
                 required
                 autoComplete="off"
-                className="w-full border border-hairline bg-paper px-3 py-2 pr-10 font-mono text-[11px] text-ink outline-none focus:border-ink"
+                className={`${fieldClassName} pr-10`}
                 placeholder="••••••••••••••••"
               />
               <button
                 type="button"
                 onClick={() => setShowFormValue((open) => !open)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-ink-soft hover:text-ink"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-500 hover:text-gray-900"
                 aria-label={showFormValue ? "Hide value" : "Show value"}
               >
                 {showFormValue ? (
@@ -244,7 +239,7 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
           <button
             type="submit"
             disabled={isSaving}
-            className="border border-ink bg-ink px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-paper transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
           >
             {isSaving ? "Saving…" : "Save Key"}
           </button>
@@ -252,46 +247,46 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
       </div>
 
       {(statusMessage || errorMessage) && (
-        <p
-          className={`font-mono text-[10px] tracking-[0.12em] uppercase ${
-            errorMessage ? "text-red-600" : "text-ink"
-          }`}
-        >
+        <p className={`text-sm ${errorMessage ? "text-red-600" : "text-emerald-700"}`}>
           {errorMessage ?? statusMessage}
         </p>
       )}
 
       <div>
-        <div className="mb-4 flex items-end justify-between gap-3 border-b border-hairline pb-3">
-          <h2 className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            Stored Keys
-          </h2>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-900">Active Keys</h2>
           <button
             type="button"
             onClick={() => void loadCredentials()}
-            className="border border-hairline px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-soft hover:border-ink hover:text-ink"
+            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900"
           >
             Refresh
           </button>
         </div>
 
-        <div className="border border-hairline">
-          <div className="hidden grid-cols-12 gap-2 border-b border-hairline bg-paper px-4 py-2 font-mono text-[9px] tracking-[0.16em] uppercase text-ink-soft md:grid">
-            <div className="col-span-3">Key Name</div>
-            <div className="col-span-2">Scope</div>
-            <div className="col-span-3">Last Updated</div>
-            <div className="col-span-2">Status</div>
-            <div className="col-span-2 text-right">Actions</div>
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div className="hidden grid-cols-12 gap-2 border-b border-gray-200 bg-gray-50 px-4 py-3 md:grid">
+            <div className="col-span-3 text-xs font-medium uppercase tracking-wider text-gray-500">
+              Key name
+            </div>
+            <div className="col-span-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+              Scope
+            </div>
+            <div className="col-span-3 text-xs font-medium uppercase tracking-wider text-gray-500">
+              Last updated
+            </div>
+            <div className="col-span-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+              Status
+            </div>
+            <div className="col-span-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+              Actions
+            </div>
           </div>
 
           {isLoading ? (
-            <div className="px-4 py-8 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-              LOADING_VAULT...
-            </div>
+            <div className="px-4 py-8 text-center text-sm text-gray-500">Loading keys…</div>
           ) : credentials.length === 0 ? (
-            <div className="px-4 py-8 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-              VAULT_EMPTY // NO_KEYS_STORED
-            </div>
+            <div className="py-8 text-center text-sm text-gray-500">{emptyStateCopy}</div>
           ) : (
             credentials.map((row) => {
               const isVisible = Boolean(visibleIds[row.id]);
@@ -303,44 +298,40 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
               return (
                 <div
                   key={row.id}
-                  className="grid grid-cols-1 gap-3 border-b border-hairline px-4 py-4 last:border-b-0 md:grid-cols-12 md:items-center md:gap-2"
+                  className="grid grid-cols-1 gap-3 border-b border-gray-100 px-4 py-4 last:border-b-0 md:grid-cols-12 md:items-center md:gap-2"
                 >
                   <div className="md:col-span-3">
-                    <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-ink">
-                      {row.name}
-                    </p>
-                    <p className="mt-1 font-mono text-[9px] text-ink-soft md:hidden">
+                    <p className="text-sm font-medium text-gray-900">{row.name}</p>
+                    <p className="mt-1 break-all text-xs text-gray-500 md:hidden">
                       {isVisible ? row.value : row.maskedValue}
                     </p>
                   </div>
-                  <div className="md:col-span-2 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft">
+                  <div className="text-sm text-gray-600 md:col-span-2">
                     {row.scope === "global" ? "Global" : clientLabel}
                   </div>
-                  <div className="md:col-span-3 font-mono text-[10px] tracking-[0.1em] text-ink-soft">
+                  <div className="text-sm text-gray-600 md:col-span-3">
                     {formatCredentialUpdatedAt(row.updated_at)}
                   </div>
                   <div className="md:col-span-2">
                     <button
                       type="button"
                       onClick={() => toggleVisible(row.id)}
-                      className="inline-flex items-center gap-1 border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft transition-colors hover:border-ink hover:text-ink"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900"
                     >
                       {isVisible ? (
                         <>
-                          <EyeOff className="h-3 w-3" aria-hidden />
+                          <EyeOff className="h-3.5 w-3.5" aria-hidden />
                           Visible
                         </>
                       ) : (
                         <>
-                          <Eye className="h-3 w-3" aria-hidden />
+                          <Eye className="h-3.5 w-3.5" aria-hidden />
                           Hidden
                         </>
                       )}
                     </button>
                     {isVisible ? (
-                      <p className="mt-2 break-all font-mono text-[9px] text-ink md:mt-1">
-                        {row.value}
-                      </p>
+                      <p className="mt-2 break-all text-xs text-gray-700 md:mt-1">{row.value}</p>
                     ) : null}
                   </div>
                   <div className="md:col-span-2 md:text-right">
@@ -348,7 +339,7 @@ export function CredentialsVaultUI({ workspaceClientId }: CredentialsVaultUIProp
                       type="button"
                       disabled={deletingId === row.id}
                       onClick={() => void handleDelete(row.id, row.name)}
-                      className="border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-red-600 hover:border-red-600 disabled:opacity-40"
+                      className="text-sm text-gray-500 transition-colors hover:text-red-600 disabled:opacity-40"
                     >
                       {deletingId === row.id ? "Deleting…" : "Delete"}
                     </button>

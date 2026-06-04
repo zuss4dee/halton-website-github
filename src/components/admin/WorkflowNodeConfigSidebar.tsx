@@ -4,6 +4,7 @@ import {
   readWorkflowNodeData,
   type WorkflowNodeData,
 } from "@/lib/admin/workflowNodeConfig";
+import type { EmailTemplateRow } from "@/lib/admin/emailTemplatesRepository";
 import {
   WORKFLOW_EXECUTOR_TYPES,
   type WorkflowExecutorType,
@@ -13,6 +14,8 @@ type WorkflowNodeConfigSidebarProps = {
   nodeId: string;
   nodeType: WorkflowExecutorType;
   nodeData: WorkflowNodeData;
+  emailTemplates: EmailTemplateRow[];
+  templatesLoading?: boolean;
   onPatch: (patch: { type?: WorkflowExecutorType; data?: WorkflowNodeData }) => void;
   onDelete: () => void;
 };
@@ -27,18 +30,18 @@ const EXECUTOR_LABELS: Record<WorkflowExecutorType, string> = {
 };
 
 const fieldClassName =
-  "mt-1 w-full border border-gray-700 bg-gray-950 px-2 py-1.5 text-[11px] text-gray-200 outline-none focus:border-gray-500";
+  "mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200";
 
 function FieldLabel({ children }: { children: ReactNode }) {
-  return (
-    <span className="text-[10px] tracking-[0.14em] text-gray-500 uppercase">{children}</span>
-  );
+  return <span className="text-sm font-medium text-gray-700">{children}</span>;
 }
 
 export function WorkflowNodeConfigSidebar({
   nodeId,
   nodeType,
   nodeData,
+  emailTemplates,
+  templatesLoading = false,
   onPatch,
   onDelete,
 }: WorkflowNodeConfigSidebarProps) {
@@ -63,10 +66,10 @@ export function WorkflowNodeConfigSidebar({
   };
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-l border-gray-800 bg-black font-mono">
-      <div className="border-b border-gray-800 px-4 py-3">
-        <p className="text-[10px] tracking-[0.16em] text-gray-500 uppercase">Node config</p>
-        <p className="mt-1 truncate text-[11px] text-gray-300">{nodeId}</p>
+    <aside className="flex h-full min-h-0 w-[300px] shrink-0 flex-col overflow-hidden border-l border-gray-200 bg-white">
+      <div className="border-b border-gray-200 px-4 py-3">
+        <p className="text-sm font-medium text-gray-900">Node config</p>
+        <p className="mt-1 truncate text-xs text-gray-500">{nodeId}</p>
       </div>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
@@ -123,7 +126,7 @@ export function WorkflowNodeConfigSidebar({
         {draftType === "deepseek_llm" ? (
           <label className="block">
             <FieldLabel>Prompt</FieldLabel>
-            <p className="mt-1 text-[10px] leading-relaxed text-gray-600">
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
               Use {"{{steps.nodeId.field}}"} to inject prior step outputs.
             </p>
             <textarea
@@ -193,32 +196,55 @@ export function WorkflowNodeConfigSidebar({
                 onChange={(event) => applyDataPatch({ subject: event.target.value })}
               />
             </label>
-            <label className="block">
-              <FieldLabel>Body</FieldLabel>
-              <textarea
-                className={`${fieldClassName} min-h-[120px] resize-y`}
-                value={draftData.body ?? ""}
-                onChange={(event) => applyDataPatch({ body: event.target.value })}
-              />
-            </label>
+            <div className="block">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <FieldLabel>Select Base Template</FieldLabel>
+                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium leading-snug text-gray-600">
+                  AI will automatically personalize variables (e.g., {"{{first_name}}"})
+                </span>
+              </div>
+              <select
+                className={fieldClassName}
+                value={draftData.template_id ?? ""}
+                disabled={templatesLoading}
+                onChange={(event) => {
+                  const templateId = event.target.value;
+                  applyDataPatch({ template_id: templateId || undefined });
+                }}
+              >
+                <option value="">
+                  {templatesLoading ? "Loading templates…" : "Choose a template…"}
+                </option>
+                {emailTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              {!templatesLoading && emailTemplates.length === 0 ? (
+                <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                  No templates yet. Create one in Template Library.
+                </p>
+              ) : null}
+            </div>
           </>
         ) : null}
 
         {draftType === "trigger" ? (
-          <p className="text-[10px] leading-relaxed text-gray-600">
+          <p className="text-xs leading-relaxed text-gray-500">
             Trigger steps pass the safemode test email into the execution context when you run
             the DAG.
           </p>
         ) : null}
       </div>
 
-      <div className="border-t border-gray-800 p-4">
+      <div className="border-t border-gray-200 p-4">
         <button
           type="button"
           onClick={onDelete}
-          className="w-full border border-red-900 bg-red-950/40 px-3 py-2 text-[10px] tracking-[0.12em] text-red-400 uppercase transition-colors hover:border-red-700 hover:bg-red-950/70"
+          className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:border-red-300 hover:bg-red-50"
         >
-          Delete Step
+          Delete step
         </button>
       </div>
     </aside>

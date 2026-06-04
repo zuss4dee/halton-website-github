@@ -59,10 +59,10 @@ function QueueTabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`border px-4 py-2 font-mono text-[10px] tracking-[0.16em] uppercase transition-colors ${
+      className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
         active
-          ? "border-ink bg-ink text-paper"
-          : "border-hairline bg-paper text-ink-soft hover:text-ink"
+          ? "bg-gray-900 text-white"
+          : "border border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900"
       }`}
     >
       {label}
@@ -242,43 +242,29 @@ export function WorkspaceOutboundQueue({
     setIsSubmitting(false);
   };
 
-  const listHeading = isSentTab ? "01 // SENT_HISTORY" : "01 // PENDING_TARGETS";
-  const editorHeading = isSentTab ? "02 // SENT_COPY" : "02 // DRAFT_EDITOR";
+  const listHeading = isSentTab ? "Sent history" : "Pending targets";
+  const editorHeading = isSentTab ? "Sent copy" : "Draft editor";
   const emptyListCopy = isSentTab
-    ? "OUTBOX_EMPTY // NO_SENT_CAMPAIGNS"
-    : "QUEUE_EMPTY // NO_DRAFTS_PENDING";
+    ? "No sent campaigns yet."
+    : "No drafts pending approval.";
 
   return (
     <section className={`flex flex-col ${embedded ? "" : "min-h-[60vh]"}`}>
       {!embedded ? (
-        <header className="border-b border-hairline pb-8 md:pb-10">
+        <header className="border-b border-gray-200 pb-8 md:pb-10">
           <Link
             to="/admin/client/$id/orchestration"
             params={{ id: workspaceClientId }}
-            className="mb-6 inline-block font-mono text-[11px] tracking-[0.16em] uppercase text-ink-soft transition-colors hover:text-ink"
+            className="mb-6 inline-block text-sm text-gray-500 transition-colors hover:text-gray-900"
           >
-            &lt; RETURN_TO_ORCHESTRATION
+            ← Return to orchestration
           </Link>
-          <div className="eyebrow mb-4">04 // Outbound Queue</div>
-          <h1 className="font-display text-[clamp(2rem,6vw,4.5rem)] leading-[0.88] tracking-[-0.04em]">
-            OUTBOUND_QUEUE // HUMAN_REVIEW
-          </h1>
-          <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-            WORKSPACE_SCOPED // {workspaceClientId || "NO_CLIENT"}
-          </p>
-          <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft/80">
-            {isSentTab
-              ? "OUTBOX_LAYER // DEPLOYED_CAMPAIGN_HISTORY"
-              : "APPROVAL_LAYER // AI_DRAFTS_PENDING_RELEASE"}
+          <h1 className="text-3xl font-bold text-gray-900">Active Pipeline</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            Review and approve generated outbound sequences.
           </p>
         </header>
-      ) : (
-        <div className="mb-4 border-b border-hairline pb-3">
-          <h3 className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            Human Review Queue
-          </h3>
-        </div>
-      )}
+      ) : null}
 
       <div className={`flex flex-wrap gap-2 ${embedded ? "" : "mt-6"}`}>
         <QueueTabButton
@@ -294,27 +280,21 @@ export function WorkspaceOutboundQueue({
       </div>
 
       {statusMessage ? (
-        <div className="mt-6 border border-green-800 bg-green-950/30 px-4 py-3 font-mono text-xs tracking-[0.12em] text-green-400">
+        <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {statusMessage}
         </div>
       ) : null}
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-4">
-          <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            {listHeading}
-          </h2>
+          <h2 className="mb-4 text-sm font-medium text-gray-700">{listHeading}</h2>
 
-          <div className="flex max-h-[600px] flex-col border border-hairline">
+          <div className="flex max-h-[600px] flex-col rounded-lg border border-gray-200 bg-white">
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
             {isLoading ? (
-              <div className="px-3 py-6 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-                LOADING_QUEUE...
-              </div>
+              <div className="px-3 py-6 text-sm text-gray-500">Loading queue…</div>
             ) : queue.length === 0 ? (
-              <div className="px-3 py-6 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-                {emptyListCopy}
-              </div>
+              <div className="px-3 py-6 text-sm text-gray-500">{emptyListCopy}</div>
             ) : (
               paginatedQueue.map((lead) => {
                 const isSelected = selectedLead?.id === lead.id;
@@ -327,35 +307,31 @@ export function WorkspaceOutboundQueue({
                     key={lead.id}
                     type="button"
                     onClick={() => setSelectedLead(lead)}
-                    className={`w-full border border-gray-800 p-3 text-left transition-colors ${
-                      isSelected ? "bg-gray-900" : "bg-black hover:bg-gray-950"
+                    className={`w-full rounded-md border p-3 text-left transition-colors ${
+                      isSelected
+                        ? "border-gray-300 bg-gray-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-mono text-xs uppercase tracking-[0.12em] text-white">
-                          {name}
-                        </div>
-                        <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-gray-500">
-                          {company}
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{name}</div>
+                        <div className="mt-1 text-xs text-gray-500">{company}</div>
                       </div>
                       {isSentTab ? (
                         <Check
-                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500/90"
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"
                           strokeWidth={2.5}
                           aria-hidden
                         />
                       ) : (
-                        <span className="shrink-0 bg-yellow-400 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-black">
-                          [PENDING]
+                        <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                          Pending
                         </span>
                       )}
                     </div>
                     {isSentTab ? (
-                      <p className="mt-2 font-mono text-[9px] tracking-[0.08em] text-gray-600">
-                        Sent on {sentLabel}
-                      </p>
+                      <p className="mt-2 text-xs text-gray-500">Sent on {sentLabel}</p>
                     ) : null}
                   </button>
                 );
@@ -364,8 +340,8 @@ export function WorkspaceOutboundQueue({
             </div>
 
             {!isLoading && totalItems > 0 ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline bg-paper px-3 py-2">
-                <span className="font-mono text-[9px] tracking-[0.12em] uppercase text-ink-soft">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-3 py-2">
+                <span className="text-xs text-gray-500">
                   {rangeStart} – {rangeEnd} of {totalItems}
                 </span>
                 <div className="flex gap-2">
@@ -373,7 +349,7 @@ export function WorkspaceOutboundQueue({
                     type="button"
                     disabled={safeListPage <= 1}
                     onClick={() => setListPage((page) => Math.max(1, page - 1))}
-                    className="border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft transition-colors hover:border-ink hover:text-ink disabled:opacity-40"
+                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 disabled:opacity-40"
                   >
                     Previous
                   </button>
@@ -381,7 +357,7 @@ export function WorkspaceOutboundQueue({
                     type="button"
                     disabled={safeListPage >= totalPages}
                     onClick={() => setListPage((page) => Math.min(totalPages, page + 1))}
-                    className="border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft transition-colors hover:border-ink hover:text-ink disabled:opacity-40"
+                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 disabled:opacity-40"
                   >
                     Next
                   </button>
@@ -392,35 +368,40 @@ export function WorkspaceOutboundQueue({
         </div>
 
         <div className="lg:col-span-8">
-          <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            {editorHeading}
-          </h2>
+          <h2 className="mb-4 text-sm font-medium text-gray-700">{editorHeading}</h2>
 
           {!selectedLead ? (
-            <div className="flex h-96 items-center justify-center border border-gray-800 bg-black font-mono text-xs tracking-[0.16em] uppercase text-gray-500">
-              &gt; NO_TARGET_SELECTED
+            <div className="flex h-96 items-center justify-center rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+              <p className="text-sm text-gray-500">
+                Select a target to review their outreach draft.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="border border-gray-800 bg-black px-4 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-gray-500">
-                TARGET: {selectedLead.prospect_name ?? "—"} //{" "}
-                {selectedLead.email ?? "NO_EMAIL_ON_FILE"}
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium text-gray-900">
+                    {selectedLead.prospect_name ?? "—"}
+                  </span>
+                  <span className="text-gray-400"> · </span>
+                  {selectedLead.email ?? "No email on file"}
+                </p>
               </div>
 
-              <textarea
-                value={editedCopy}
-                onChange={(e) => setEditedCopy(e.target.value)}
-                readOnly={isSentTab}
-                className={`h-96 w-full resize-y border border-gray-800 bg-black p-4 font-mono text-xs leading-relaxed focus:outline-none ${
-                  isSentTab
-                    ? "cursor-default text-gray-400"
-                    : "text-gray-300 focus:border-gray-600"
-                }`}
-              />
+              <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                <textarea
+                  value={editedCopy}
+                  onChange={(e) => setEditedCopy(e.target.value)}
+                  readOnly={isSentTab}
+                  className={`h-96 w-full resize-y rounded-md border-0 bg-transparent p-0 text-sm leading-relaxed text-gray-800 focus:outline-none focus:ring-0 ${
+                    isSentTab ? "cursor-default text-gray-600" : ""
+                  }`}
+                />
+              </div>
 
               {isSentTab ? (
-                <div className="flex items-center gap-2 border border-gray-800 bg-black px-4 py-3 font-mono text-[10px] tracking-[0.08em] text-gray-500">
-                  <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500/90" strokeWidth={2.5} aria-hidden />
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
+                  <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
                   <span>Sent on {formatSentLabel(selectedLead.sent_at, selectedLead.created_at)}</span>
                 </div>
               ) : (
@@ -429,17 +410,17 @@ export function WorkspaceOutboundQueue({
                     type="button"
                     onClick={() => void handleDiscard()}
                     disabled={isSubmitting}
-                    className="rounded-none border border-gray-800 px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-40"
+                    className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:opacity-40"
                   >
-                    [ DISCARD_DRAFT ]
+                    Discard draft
                   </button>
                   <button
                     type="button"
                     onClick={() => void handleApprove()}
                     disabled={isSubmitting}
-                    className="rounded-none border border-green-700 bg-green-900/40 px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-green-300 transition-colors hover:bg-green-800/60 hover:text-green-200 disabled:opacity-40"
+                    className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
                   >
-                    [ APPROVE_AND_SEND ]
+                    Approve and send
                   </button>
                 </div>
               )}

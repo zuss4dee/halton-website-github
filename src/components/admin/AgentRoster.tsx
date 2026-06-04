@@ -6,6 +6,8 @@ import {
   normalizeAgentRole,
   type AgentActivityDetail,
 } from "@/lib/admin/agentActivity";
+import { getAgentStatus } from "@/lib/admin/agentStatus";
+import { AgentStatusBadge } from "@/components/admin/AgentStatusBadge";
 import type { AgentRosterRow } from "@/lib/admin/useAgentRoster";
 
 type AgentRosterProps = {
@@ -14,61 +16,19 @@ type AgentRosterProps = {
   isLoading: boolean;
 };
 
-type AgentStatusTone = "online" | "working" | "error" | "standby";
-
-type AgentStatus = {
-  label: "Online" | "Working" | "Error" | "Standby";
-  tone: AgentStatusTone;
-};
-
 const ACTIVITY_IDLE_MS = 1500;
-
-const STATUS_DOT_CLASS: Record<AgentStatusTone, string> = {
-  online: "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]",
-  working: "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)] animate-pulse",
-  error: "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.9)]",
-  standby: "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.8)]",
-};
-
-function getAgentStatus(agent: AgentRosterRow, isWorking: boolean): AgentStatus {
-  const role = normalizeAgentRole(agent.role);
-
-  if (role === "CEO_ROUTER" || role === "CEO") {
-    return { label: "Online", tone: "online" };
-  }
-
-  if (agent.is_active === false) {
-    return { label: "Standby", tone: "standby" };
-  }
-
-  const hasMissingData =
-    !agent.name?.trim() ||
-    !agent.role?.trim() ||
-    !agent.model?.trim() ||
-    !agent.system_prompt?.trim();
-
-  if (hasMissingData) {
-    return { label: "Error", tone: "error" };
-  }
-
-  if (isWorking) {
-    return { label: "Working", tone: "working" };
-  }
-
-  return { label: "Standby", tone: "standby" };
-}
 
 function AgentRosterSkeleton() {
   return (
     <>
       {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="animate-pulse bg-paper px-3 py-3">
-          <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-hairline" />
-            <div className="h-3 w-2/5 bg-hairline" />
-          </div>
-          <div className="mt-2 h-2 w-1/3 bg-hairline pl-4" />
-          <div className="mt-1.5 h-2 w-1/2 bg-hairline pl-4" />
+        <div
+          key={index}
+          className="animate-pulse rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
+        >
+          <div className="h-4 w-2/5 rounded bg-gray-200" />
+          <div className="mt-3 h-3 w-1/3 rounded bg-gray-100" />
+          <div className="mt-2 h-3 w-1/2 rounded bg-gray-100" />
         </div>
       ))}
     </>
@@ -86,70 +46,58 @@ function AgentRosterCard({
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const status = getAgentStatus(agent, isWorking);
-  const displayName = agent.name?.trim() || "UNNAMED_AGENT";
+  const displayName = agent.name?.trim() || "Unnamed Agent";
   const prompt = agent.system_prompt?.trim() ?? "";
   const inactive = agent.is_active === false;
 
   return (
     <article
-      className={`bg-paper transition-colors ${inactive ? "opacity-60" : ""}`}
+      className={`rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:border-gray-300 ${
+        inactive ? "opacity-60" : ""
+      }`}
     >
-      <div className="px-3 pt-3">
-        <Link
-          to="/admin/client/$id/agents/$agentId"
-          params={{ id: clientId, agentId: agent.id }}
-          className="mb-2 inline-block font-mono text-[9px] tracking-[0.16em] uppercase text-ink-soft transition-colors hover:text-ink"
-        >
-          Agent Studio →
-        </Link>
-      </div>
-      <div className="px-3 pb-3">
-      <header className="flex items-start gap-2">
-        <span
-          className={`mt-1 h-2 w-2 shrink-0 rounded-full ${STATUS_DOT_CLASS[status.tone]}`}
-          title={status.label}
-          aria-hidden
-        />
+      <Link
+        to="/admin/client/$id/agents/$agentId"
+        params={{ id: clientId, agentId: agent.id }}
+        className="mb-3 inline-block text-xs text-gray-500 transition-colors hover:text-gray-900"
+      >
+        Agent Studio →
+      </Link>
+
+      <header className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-            <h3 className="truncate font-mono text-[11px] tracking-[0.16em] uppercase text-ink">
-              {displayName}
-            </h3>
-            <span className="font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft">
-              {status.label}
-            </span>
-          </div>
-          <dl className="mt-2 space-y-0.5 font-mono text-[10px] tracking-[0.12em] uppercase">
+          <h3 className="truncate text-lg font-semibold text-gray-900">{displayName}</h3>
+          <dl className="mt-3 space-y-1 text-sm">
             <div className="flex gap-2">
-              <dt className="shrink-0 text-ink-soft/70">Role</dt>
-              <dd className="truncate text-ink">{agent.role ?? "—"}</dd>
+              <dt className="shrink-0 text-gray-500">Role</dt>
+              <dd className="truncate text-gray-700">{agent.role ?? "—"}</dd>
             </div>
             <div className="flex gap-2">
-              <dt className="shrink-0 text-ink-soft/70">Model</dt>
-              <dd className="truncate text-ink">{agent.model ?? "—"}</dd>
+              <dt className="shrink-0 text-gray-500">Model</dt>
+              <dd className="truncate text-gray-700">{agent.model ?? "—"}</dd>
             </div>
           </dl>
         </div>
+        <AgentStatusBadge status={status} />
       </header>
-      </div>
 
       {prompt ? (
-        <div className="border-t border-hairline px-3 pb-3 pt-2 pl-7">
+        <div className="mt-4 border-t border-gray-100 pt-3">
           <button
             type="button"
             onClick={() => setInstructionsOpen((open) => !open)}
-            className="flex items-center gap-1 font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft transition-colors hover:text-ink"
+            className="flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-900"
             aria-expanded={instructionsOpen}
           >
             {instructionsOpen ? (
-              <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
             ) : (
-              <ChevronRight className="h-3 w-3 shrink-0" aria-hidden />
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
             )}
-            {instructionsOpen ? "Hide Instructions" : "View Instructions"}
+            {instructionsOpen ? "Hide instructions" : "View instructions"}
           </button>
           {instructionsOpen ? (
-            <pre className="mt-2 max-h-44 overflow-y-auto border border-hairline bg-paper p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap text-ink-soft">
+            <pre className="mt-2 max-h-44 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3 text-xs leading-relaxed whitespace-pre-wrap text-gray-600">
               {prompt}
             </pre>
           ) : null}
@@ -215,15 +163,13 @@ export function AgentRoster({
 
   return (
     <section>
-      <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-        01 // AGENT_ROSTER
-      </h2>
-      <div className="grid grid-cols-1 gap-px border border-hairline bg-hairline md:grid-cols-2 lg:grid-cols-3">
+      <h2 className="mb-4 text-lg font-semibold text-gray-900">Agent roster</h2>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading ? (
           <AgentRosterSkeleton />
         ) : agents.length === 0 ? (
-          <div className="col-span-full bg-paper px-4 py-6 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-            NO_AGENTS_ONLINE
+          <div className="col-span-full rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center text-sm text-gray-500">
+            No agents configured for this workspace.
           </div>
         ) : (
           agents.map((agent) => {

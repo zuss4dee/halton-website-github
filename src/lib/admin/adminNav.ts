@@ -9,6 +9,7 @@ export type WorkspaceNavSegment =
   | "orchestration"
   | "vault"
   | "workflow"
+  | "templates"
   | "outbound"
   | "settings"
   | "credentials";
@@ -31,6 +32,7 @@ export const WORKSPACE_NAV: WorkspaceNavItem[] = [
   { label: "< Return to Global", segment: "global" },
   { label: "02 // CLIENT ASSETS", segment: "vault" },
   { label: "03 // CAMPAIGN RULES", segment: "workflow" },
+  { label: "03b // EMAIL TEMPLATES", segment: "templates" },
   { label: "04 // ACTIVE PIPELINE", segment: "outbound" },
   { label: "05 // SETTINGS", segment: "settings" },
   { label: "06 // CREDENTIALS", segment: "credentials" },

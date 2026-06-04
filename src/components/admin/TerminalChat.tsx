@@ -370,23 +370,21 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
 
   return (
     <>
-      <section className="border-t border-hairline pt-8">
-        <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-          02 // MISSION_CONTROL
-        </h2>
+      <section>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Mission control</h2>
         {replyContext ? (
-          <div className="mb-3 border border-hairline bg-paper px-3 py-2 font-mono text-[10px] tracking-[0.1em] text-ink-soft uppercase">
-            Replying to [{replyContext.agentLabel}] // {replyContext.eventType}
+          <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            Replying to {replyContext.agentLabel} · {replyContext.eventType}
             <button
               type="button"
               onClick={clearReplyContext}
-              className="ml-3 text-ink transition-colors hover:text-ink-soft"
+              className="ml-3 text-gray-900 transition-colors hover:text-gray-600"
             >
-              [CLEAR]
+              Clear
             </button>
           </div>
         ) : null}
-        <div className="border border-hairline">
+        <div className="rounded-xl border border-gray-300 bg-white p-2 shadow-sm">
           <input
             ref={commandInputRef}
             type="text"
@@ -417,30 +415,35 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
                 ? "Respond to the selected point…"
                 : "Enter mission directive for this workspace…"
             }
-            className="w-full rounded-none border-0 border-b border-hairline bg-transparent px-4 py-4 font-mono text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none disabled:opacity-50"
+            className="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 disabled:opacity-50"
           />
-          <div className="flex justify-end px-4 py-3">
+          <div className="flex justify-end px-1 pb-1 pt-2">
             <button
               type="button"
               onClick={() => void handleDispatchMission()}
               disabled={!command.trim() || isExecuting}
-              className="rounded-none border border-hairline bg-ink px-4 py-2 font-mono text-[11px] tracking-[0.16em] uppercase text-paper disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-black px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {isExecuting ? "[DISPATCHING...]" : "[DISPATCH_MISSION]"}
+              {isExecuting ? "Dispatching…" : "Dispatch"}
             </button>
           </div>
         </div>
       </section>
 
       {showTerminal ? (
-        <section className="border-t border-hairline pt-8">
-          <h2 className="mb-4 font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            03 // TELEMETRY_TERMINAL
-            {executionId ? ` // ${executionId}` : ""}
-          </h2>
-          <div className="h-96 overflow-y-auto border border-gray-800 bg-black p-3 font-mono text-xs leading-snug">
+        <section className="mt-4 overflow-hidden rounded-lg border border-gray-800 shadow-inner">
+          <div className="flex items-center gap-2 border-b border-gray-700 bg-gray-800 px-4 py-2 text-xs text-gray-400">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+            Live Execution Logs
+            {executionId ? (
+              <span className="ml-auto truncate font-mono text-[10px] text-gray-500">
+                {executionId}
+              </span>
+            ) : null}
+          </div>
+          <div className="h-96 overflow-y-auto bg-gray-900 p-4 font-mono text-sm leading-snug text-green-400">
             {sortedLogs.length === 0 && isExecuting ? (
-              <div className="text-gray-500">&gt; [SYSTEM] AWAITING_TELEMETRY...</div>
+              <div className="text-gray-500">&gt; Awaiting telemetry…</div>
             ) : null}
             {sortedLogs.map((log, index) => {
               const agentLabel = resolveAgentLabel(log.agent_id, agents);

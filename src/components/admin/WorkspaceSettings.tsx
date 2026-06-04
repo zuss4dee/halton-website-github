@@ -3,34 +3,27 @@ import type { ClientRow } from "@/lib/admin/clientsRepository";
 import { supabase } from "@/lib/supabase";
 import { useClientRoute } from "./ClientRouteContext";
 
-type VaultField = "core_offer" | "target_icp" | "case_studies" | "tone_of_voice";
+type GroundingField = "target_icp" | "tone_of_voice";
 
-const VAULT_FIELDS: {
-  key: VaultField;
+const GROUNDING_FIELDS: {
+  key: GroundingField;
   label: string;
   placeholder: string;
 }[] = [
   {
-    key: "core_offer",
-    label: "Core Offer",
-    placeholder: "What exactly does this client sell?",
-  },
-  {
     key: "target_icp",
-    label: "Target Icp",
-    placeholder: "Who are we targeting? (Titles, Industries, Revenue)",
-  },
-  {
-    key: "case_studies",
-    label: "Case Studies",
-    placeholder: "Proof of work, metrics, and past results.",
+    label: "Target ICP",
+    placeholder: "Who are we targeting? Titles, industries, company size, and buying triggers.",
   },
   {
     key: "tone_of_voice",
-    label: "Tone Of Voice",
-    placeholder: "Brand voice parameters.",
+    label: "Tone of Voice",
+    placeholder: "Brand voice, writing style, and phrasing guardrails for outbound copy.",
   },
 ];
+
+const textareaClassName =
+  "min-h-[180px] w-full resize-y rounded-lg border border-gray-300 bg-white p-3 text-sm leading-relaxed text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200";
 
 export function WorkspaceSettings() {
   const routeClient = useClientRoute();
@@ -77,7 +70,7 @@ export function WorkspaceSettings() {
     };
   }, [clientId]);
 
-  const handleFieldChange = useCallback((field: VaultField, value: string) => {
+  const handleFieldChange = useCallback((field: GroundingField, value: string) => {
     setClient((prev) => (prev ? { ...prev, [field]: value } : prev));
     setSaveStatus("idle");
   }, []);
@@ -91,9 +84,7 @@ export function WorkspaceSettings() {
     const { error } = await supabase
       .from("clients")
       .update({
-        core_offer: client.core_offer ?? "",
         target_icp: client.target_icp ?? "",
-        case_studies: client.case_studies ?? "",
         tone_of_voice: client.tone_of_voice ?? "",
       })
       .eq("id", clientId);
@@ -109,69 +100,59 @@ export function WorkspaceSettings() {
   };
 
   if (isLoading) {
-    return (
-      <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-        LOADING_KNOWLEDGE_VAULT...
-      </p>
-    );
+    return <p className="text-sm text-gray-500">Loading agent grounding…</p>;
   }
 
   if (!client) {
-    return (
-      <p className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-        VAULT_UNAVAILABLE
-      </p>
-    );
+    return <p className="text-sm text-gray-500">Settings unavailable for this client.</p>;
   }
-
-  const companyName = client.company_name?.trim() ?? "Unknown Client";
 
   return (
     <section className="space-y-8">
-      <header className="border-b border-hairline pb-6">
-        <div className="eyebrow mb-3">Workspace 05 // Settings</div>
-        <h1 className="font-display text-[clamp(1.75rem,4vw,3rem)] leading-[0.9] tracking-[-0.04em]">
-          [ KNOWLEDGE_VAULT ] — {companyName.toUpperCase()}
-        </h1>
-        <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-          CLIENT_CONTEXT // AGENT_GROUNDING_LAYER
+      <header className="border-b border-gray-200 pb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Agent Grounding</h1>
+        <p className="mt-2 text-sm text-gray-500">
+          Configure the core instructions, tone, and guardrails for the AI writer.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-px border border-hairline bg-hairline lg:grid-cols-2">
-        {VAULT_FIELDS.map((field) => (
-          <div key={field.key} className="flex flex-col bg-paper">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {GROUNDING_FIELDS.map((field) => (
+          <div key={field.key} className="flex flex-col">
             <label
-              htmlFor={`vault-${field.key}`}
-              className="border-b border-hairline px-4 py-3 font-mono text-[10px] tracking-[0.2em] uppercase text-ink-soft"
+              htmlFor={`grounding-${field.key}`}
+              className="mb-2 text-sm font-medium text-gray-700"
             >
-              [ {field.label.replace(/\s+/g, "_").toUpperCase()} ]
+              {field.label}
             </label>
             <textarea
-              id={`vault-${field.key}`}
+              id={`grounding-${field.key}`}
               value={client[field.key] ?? ""}
               onChange={(e) => handleFieldChange(field.key, e.target.value)}
               placeholder={field.placeholder}
               rows={8}
-              className="min-h-[180px] w-full resize-y rounded-none border border-gray-800 bg-black px-3 py-3 font-mono text-xs leading-relaxed text-paper placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-700"
+              className={textareaClassName}
             />
           </div>
         ))}
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-hairline pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-soft">
-          {saveStatus === "saved" && "VAULT_CONFIGURATION_SYNCED"}
-          {saveStatus === "error" && "SYNC_FAILED // CHECK_CONSOLE"}
-          {saveStatus === "idle" && "UNSAVED_CHANGES_PERSIST_ON_SAVE"}
+      <div className="flex flex-col gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-gray-500">
+          {saveStatus === "saved" && (
+            <span className="text-emerald-700">Configuration saved.</span>
+          )}
+          {saveStatus === "error" && (
+            <span className="text-red-600">Save failed. Check the console for details.</span>
+          )}
         </div>
         <button
           type="button"
           onClick={() => void handleSave()}
           disabled={isSaving}
-          className="rounded-none border border-hairline bg-ink px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-paper disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-md bg-black px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {isSaving ? "[ SYNCING... ]" : "[ SAVE_VAULT_CONFIGURATION ]"}
+          {isSaving ? "Saving…" : "Save Configuration"}
         </button>
       </div>
     </section>

@@ -12,9 +12,23 @@ export const LEAD_QUEUE_STATUS = {
   PENDING: "pending",
   SENT: "sent",
   DISCARDED: "discarded",
+  PAUSED: "paused",
 } as const;
 
 export type LeadQueueStatus = (typeof LEAD_QUEUE_STATUS)[keyof typeof LEAD_QUEUE_STATUS];
+
+/** Pipeline statuses treated as high-intent for the closer dashboard */
+export const HIGH_INTENT_LEAD_STATUSES = [
+  "replied",
+  "qualified",
+  "form_filled",
+  "positive_reply",
+] as const;
+
+export function buildHighIntentLeadsFilter(): string {
+  const statusFilters = HIGH_INTENT_LEAD_STATUSES.map((s) => `status.eq.${s}`).join(",");
+  return `is_hot_lead.eq.true,${statusFilters}`;
+}
 
 export type LeadRow = {
   id: string;
@@ -28,6 +42,9 @@ export type LeadRow = {
   campaign_status?: string | null;
   queue_status?: LeadQueueStatus | string | null;
   sent_at?: string | null;
+  is_hot_lead?: boolean | null;
+  last_activity?: string | null;
+  current_step?: number | null;
   /** @deprecated legacy column */
   company_name?: string | null;
   /** @deprecated legacy column */

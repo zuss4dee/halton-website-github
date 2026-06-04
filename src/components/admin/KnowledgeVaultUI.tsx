@@ -21,16 +21,25 @@ const EMPTY_FORM = {
   content: "",
 };
 
+const fieldInputClass =
+  "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200";
+
 function previewContent(text: string, maxLength = 160): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
+function formatCategoryPillLabel(category: string): string {
+  return category
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function CategoryBadge({ category }: { category: string }) {
   return (
-    <span className="inline-block border border-hairline bg-paper px-2 py-0.5 font-mono text-[9px] tracking-[0.14em] uppercase text-ink-soft">
-      {formatKnowledgeCategoryLabel(category)}
+    <span className="inline-block rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">
+      {formatCategoryPillLabel(category)}
     </span>
   );
 }
@@ -157,23 +166,11 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
   };
 
   return (
-    <section className="space-y-6">
-      <div className="border border-hairline bg-paper">
-        <div className="border-b border-hairline px-4 py-3">
-          <h2 className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-            {editingId ? "Knowledge Vault // Edit Entry" : "Knowledge Vault // Add Entry"}
-          </h2>
-          <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft/80">
-            Workspace {workspaceClientId || "—"}
-          </p>
-        </div>
-
-        <form onSubmit={(event) => void handleSubmit(event)} className="space-y-4 p-4">
+    <section className="space-y-8">
+      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
           <div>
-            <label
-              htmlFor="vault-title"
-              className="mb-2 block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft"
-            >
+            <label htmlFor="vault-title" className="mb-2 block text-sm font-medium text-gray-700">
               Title
             </label>
             <input
@@ -181,17 +178,14 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
               type="text"
               value={form.title}
               onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-              className="w-full border border-hairline bg-paper px-3 py-2 font-mono text-[11px] tracking-[0.06em] text-ink outline-none focus:border-ink"
+              className={fieldInputClass}
               placeholder="e.g. Q3 logistics case study"
               required
             />
           </div>
 
           <div>
-            <label
-              htmlFor="vault-category"
-              className="mb-2 block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft"
-            >
+            <label htmlFor="vault-category" className="mb-2 block text-sm font-medium text-gray-700">
               Category
             </label>
             <select
@@ -203,7 +197,7 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
                   category: event.target.value as KnowledgeVaultUiCategory,
                 }))
               }
-              className="w-full border border-hairline bg-paper px-3 py-2 font-mono text-[11px] tracking-[0.08em] uppercase text-ink outline-none focus:border-ink"
+              className={fieldInputClass}
             >
               {KNOWLEDGE_VAULT_UI_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
@@ -214,10 +208,7 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
           </div>
 
           <div>
-            <label
-              htmlFor="vault-content"
-              className="mb-2 block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft"
-            >
+            <label htmlFor="vault-content" className="mb-2 block text-sm font-medium text-gray-700">
               Content
             </label>
             <textarea
@@ -227,7 +218,7 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
                 setForm((current) => ({ ...current, content: event.target.value }))
               }
               rows={10}
-              className="min-h-[200px] w-full resize-y border border-hairline bg-paper px-3 py-3 font-mono text-[11px] leading-relaxed text-ink outline-none focus:border-ink"
+              className={`${fieldInputClass} min-h-[200px] resize-y leading-relaxed`}
               placeholder="Paste case study, offer copy, brand voice rules, objection handlers…"
               required
             />
@@ -237,7 +228,7 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
             <button
               type="submit"
               disabled={isSaving || !workspaceClientId}
-              className="flex-1 border border-ink bg-ink px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-paper transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
             >
               {isSaving
                 ? "Saving…"
@@ -250,7 +241,7 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
                 type="button"
                 disabled={isSaving}
                 onClick={resetForm}
-                className="border border-hairline px-4 py-3 font-mono text-[11px] tracking-[0.16em] uppercase text-ink-soft transition-colors hover:border-ink hover:text-ink disabled:opacity-40"
+                className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -261,89 +252,86 @@ export function KnowledgeVaultUI({ clientId }: KnowledgeVaultUIProps) {
 
       {(statusMessage || errorMessage) && (
         <p
-          className={`font-mono text-[10px] tracking-[0.12em] uppercase ${
-            errorMessage ? "text-red-600" : "text-ink"
-          }`}
+          className={`text-sm ${errorMessage ? "text-red-600" : "text-emerald-700"}`}
         >
           {errorMessage ?? statusMessage}
         </p>
       )}
 
       <div>
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-hairline pb-3">
-          <div>
-            <h2 className="font-mono text-[11px] tracking-[0.2em] uppercase text-ink-soft">
-              Existing Vault
-            </h2>
-            <p className="mt-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-soft/80">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold text-gray-900">Existing Assets</h2>
+            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
               {entries.length} {entries.length === 1 ? "entry" : "entries"}
-            </p>
+            </span>
           </div>
           <button
             type="button"
             onClick={() => void loadEntries()}
-            className="border border-hairline px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-soft transition-colors hover:border-ink hover:text-ink"
+            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900"
           >
             Refresh
           </button>
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-1 gap-px border border-hairline bg-hairline md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="animate-pulse bg-paper p-4">
-                <div className="h-3 w-2/5 bg-hairline" />
-                <div className="mt-3 h-2 w-1/4 bg-hairline" />
-                <div className="mt-4 h-12 w-full bg-hairline" />
+              <div
+                key={index}
+                className="animate-pulse rounded-lg border border-gray-200 bg-white p-4"
+              >
+                <div className="h-4 w-2/5 rounded bg-gray-200" />
+                <div className="mt-3 h-3 w-1/4 rounded bg-gray-100" />
+                <div className="mt-4 h-12 w-full rounded bg-gray-100" />
               </div>
             ))}
           </div>
         ) : entries.length === 0 ? (
-          <div className="border border-dashed border-hairline px-4 py-10 text-center font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-            Vault empty // add your first entry above
+          <div className="rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">
+            No assets yet. Add your first entry above.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-px border border-hairline bg-hairline md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {entries.map((entry) => (
               <article
                 key={entry.id}
-                className={`flex flex-col bg-paper p-4 ${
-                  editingId === entry.id ? "ring-1 ring-ink" : ""
+                className={`flex flex-col rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-gray-300 ${
+                  editingId === entry.id ? "ring-2 ring-gray-200" : ""
                 }`}
               >
                 <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-                  <h3 className="font-mono text-[11px] tracking-[0.1em] uppercase text-ink">
-                    {entry.title || "UNTITLED"}
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {entry.title || "Untitled"}
                   </h3>
                   <CategoryBadge category={entry.category} />
                 </div>
-                <p className="flex-1 font-mono text-[10px] leading-relaxed text-ink-soft">
-                  {entry.content
-                    ? previewContent(entry.content)
-                    : "— no content —"}
+                <p className="flex-1 text-sm leading-relaxed text-gray-600">
+                  {entry.content ? previewContent(entry.content) : "No content"}
                 </p>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-hairline pt-3">
-                  <span className="font-mono text-[9px] tracking-[0.1em] uppercase text-ink-soft/70">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3">
+                  <span className="text-xs text-gray-400">
                     {entry.created_at
                       ? new Date(entry.created_at).toLocaleDateString()
                       : "—"}
                   </span>
-                  <div className="flex gap-2">
+                  <div className="flex gap-4">
                     <button
                       type="button"
                       disabled={deletingId === entry.id || isSaving}
                       onClick={() => handleEdit(entry)}
-                      className="border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-ink transition-colors hover:border-ink disabled:opacity-40"
+                      className="text-sm text-gray-500 transition-colors hover:text-gray-900 disabled:opacity-40"
                     >
-                      [ Edit ]
+                      Edit
                     </button>
                     <button
                       type="button"
                       disabled={deletingId === entry.id || isSaving}
                       onClick={() => void handleDelete(entry.id)}
-                      className="border border-hairline px-2 py-1 font-mono text-[9px] tracking-[0.14em] uppercase text-red-600 transition-colors hover:border-red-600 disabled:opacity-40"
+                      className="text-sm text-gray-500 transition-colors hover:text-red-600 disabled:opacity-40"
                     >
-                      {deletingId === entry.id ? "Deleting…" : "[ Delete ]"}
+                      {deletingId === entry.id ? "Deleting…" : "Delete"}
                     </button>
                   </div>
                 </div>
