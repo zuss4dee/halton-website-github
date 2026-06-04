@@ -1,15 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
+import { getSupabaseUrl } from "@/lib/auth/env";
 
 /**
  * Server-only Supabase client (service role). Never import from client components.
  */
-export function createSupabaseServer() {
-  const supabaseUrl =
-    process.env.VITE_SUPABASE_URL ??
-    process.env.SUPABASE_URL ??
-    import.meta.env.VITE_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export function createSupabaseServer(): SupabaseClient {
+  const supabaseUrl = getSupabaseUrl() || process.env.SUPABASE_URL || "";
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error(
@@ -28,4 +26,12 @@ export function createSupabaseServer() {
   });
 }
 
-export const supabase = createSupabaseServer();
+let cachedServerClient: SupabaseClient | undefined;
+
+/** Lazy singleton — avoids crashing SSR for public routes when the module is imported. */
+export function getSupabaseServer(): SupabaseClient {
+  if (!cachedServerClient) {
+    cachedServerClient = createSupabaseServer();
+  }
+  return cachedServerClient;
+}

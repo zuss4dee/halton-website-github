@@ -1,5 +1,5 @@
 import { runSystemHealthChecks, type SystemHealthReport } from "@/lib/health-check";
-import { supabase } from "@/lib/supabase-server";
+import { getSupabaseServer } from "@/lib/supabase-server";
 
 const CREDENTIAL_NAMES = [
   "RESEND_API_KEY",
@@ -16,7 +16,7 @@ async function loadGlobalCredentials(): Promise<Record<string, string | null>> {
     SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL ?? null,
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseServer()
     .from("credentials")
     .select("name, value")
     .eq("scope", "global")

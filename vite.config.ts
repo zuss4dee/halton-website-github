@@ -14,7 +14,7 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
     tsConfigPaths({ projects: ["./tsconfig.json"] }),
     tanstackStart({
-      ...(isVercel ? {} : { server: { entry: "server" } }),
+      server: { entry: "server" },
       serverFns: {
         disableCsrfMiddlewareWarning: true,
       },
@@ -22,7 +22,7 @@ export default defineConfig(({ command }) => ({
     react(),
     ...(command === "build"
       ? isVercel
-        ? [nitro()]
+        ? [nitro({ vercel: { entryFormat: "node" } })]
         : [cloudflare({ viteEnvironment: { name: "ssr" } })]
       : []),
   ],

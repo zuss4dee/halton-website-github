@@ -1,5 +1,5 @@
 import { Client } from "@notionhq/client";
-import { supabase } from "@/lib/supabase-server";
+import { getSupabaseServer } from "@/lib/supabase-server";
 
 export type NotionLeadIntel = {
   name: string;
@@ -16,7 +16,7 @@ export async function pushIntelToNotion(
   clientId: string,
   leadData: NotionLeadIntel,
 ): Promise<string> {
-  const { data: client, error } = await supabase
+  const { data: client, error } = await getSupabaseServer()
     .from("clients")
     .select("notion_api_key, notion_database_id")
     .eq("id", clientId)
