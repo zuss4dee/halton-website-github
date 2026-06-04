@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="120" viewBox="0 0 640 120" fill="none" role="img" aria-label="Halton Works">
+  <title>Halton Works</title>
+  <g transform="translate(0 49)">
+    <rect x="0.5" y="0.5" width="21" height="21" stroke="#0A0A0A" stroke-width="1"/>
+    <rect x="5" y="5" width="12" height="12" fill="#0A0A0A"/>
+  </g>
+  <text
+    x="40"
+    y="72"
+    fill="#0A0A0A"
+    font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
+    font-size="28"
+    font-weight="400"
+    letter-spacing="0.18em"
+  >
+    HALTON / WORKS
+  </text>
+</svg>
