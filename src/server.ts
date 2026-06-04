@@ -1,5 +1,6 @@
 import "./lib/error-capture";
 
+import { finalizeAuthResponse, handleAuthRequest } from "./lib/auth/requestGuard";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
@@ -69,9 +70,15 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const authGuard = await handleAuthRequest(request);
+      if (authGuard.kind === "redirect") {
+        return authGuard.response;
+      }
+
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const withSessionCookies = finalizeAuthResponse(response, authGuard);
+      return await normalizeCatastrophicSsrResponse(withSessionCookies);
     } catch (error) {
       console.error(error);
       return brandedErrorResponse();

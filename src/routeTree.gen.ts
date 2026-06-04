@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as CookiesRouteImport } from './routes/cookies'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as WorkspaceIndexRouteImport } from './routes/workspace.index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as WorkspaceClientIdRouteImport } from './routes/workspace.$clientId'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as AdminVaultRouteImport } from './routes/admin/vault'
@@ -28,6 +31,7 @@ import { Route as ApiWebhooksTallyRouteImport } from './routes/api/webhooks/tall
 import { Route as ApiOutboundSendRouteImport } from './routes/api/outbound/send'
 import { Route as ApiInboundResendRouteImport } from './routes/api/inbound/resend'
 import { Route as ApiCronSweeperRouteImport } from './routes/api/cron/sweeper'
+import { Route as ApiAdminOnboardClientRouteImport } from './routes/api/admin/onboard-client'
 import { Route as AdminClientsClientSlugRouteImport } from './routes/admin/clients.$clientSlug'
 import { Route as AdminClientIdRouteImport } from './routes/admin/client.$id'
 import { Route as AdminClientIdIndexRouteImport } from './routes/admin/client.$id.index'
@@ -39,6 +43,7 @@ import { Route as AdminClientIdOutboundRouteImport } from './routes/admin/client
 import { Route as AdminClientIdOrchestrationRouteImport } from './routes/admin/client.$id.orchestration'
 import { Route as AdminClientIdLeadsRouteImport } from './routes/admin/client.$id.leads'
 import { Route as AdminClientIdInfrastructureRouteImport } from './routes/admin/client.$id.infrastructure'
+import { Route as AdminClientIdDashboardRouteImport } from './routes/admin/client.$id.dashboard'
 import { Route as AdminClientIdCredentialsRouteImport } from './routes/admin/client.$id.credentials'
 import { Route as AdminClientIdAgentsAgentIdRouteImport } from './routes/admin/client.$id.agents.$agentId'
 
@@ -57,6 +62,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CookiesRoute = CookiesRouteImport.update({
   id: '/cookies',
   path: '/cookies',
@@ -72,10 +82,20 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRouteRoute,
+} as any)
+const WorkspaceClientIdRoute = WorkspaceClientIdRouteImport.update({
+  id: '/$clientId',
+  path: '/$clientId',
+  getParentRoute: () => WorkspaceRoute,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
   id: '/api/health',
@@ -137,6 +157,11 @@ const ApiCronSweeperRoute = ApiCronSweeperRouteImport.update({
   path: '/api/cron/sweeper',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminOnboardClientRoute = ApiAdminOnboardClientRouteImport.update({
+  id: '/api/admin/onboard-client',
+  path: '/api/admin/onboard-client',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminClientsClientSlugRoute = AdminClientsClientSlugRouteImport.update({
   id: '/clients/$clientSlug',
   path: '/clients/$clientSlug',
@@ -194,6 +219,11 @@ const AdminClientIdInfrastructureRoute =
     path: '/infrastructure',
     getParentRoute: () => AdminClientIdRoute,
   } as any)
+const AdminClientIdDashboardRoute = AdminClientIdDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AdminClientIdRoute,
+} as any)
 const AdminClientIdCredentialsRoute =
   AdminClientIdCredentialsRouteImport.update({
     id: '/credentials',
@@ -211,9 +241,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/cookies': typeof CookiesRoute
+  '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
-  '/workspace': typeof WorkspaceRoute
+  '/workspace': typeof WorkspaceRouteWithChildren
   '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
@@ -222,14 +253,18 @@ export interface FileRoutesByFullPath {
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/health': typeof ApiHealthRoute
+  '/workspace/$clientId': typeof WorkspaceClientIdRoute
   '/admin/': typeof AdminIndexRoute
+  '/workspace/': typeof WorkspaceIndexRoute
   '/admin/client/$id': typeof AdminClientIdRouteWithChildren
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/api/admin/onboard-client': typeof ApiAdminOnboardClientRoute
   '/api/cron/sweeper': typeof ApiCronSweeperRoute
   '/api/inbound/resend': typeof ApiInboundResendRoute
   '/api/outbound/send': typeof ApiOutboundSendRoute
   '/api/webhooks/tally': typeof ApiWebhooksTallyRoute
   '/admin/client/$id/credentials': typeof AdminClientIdCredentialsRoute
+  '/admin/client/$id/dashboard': typeof AdminClientIdDashboardRoute
   '/admin/client/$id/infrastructure': typeof AdminClientIdInfrastructureRoute
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
@@ -244,9 +279,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cookies': typeof CookiesRoute
+  '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
-  '/workspace': typeof WorkspaceRoute
   '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
@@ -255,13 +290,17 @@ export interface FileRoutesByTo {
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/health': typeof ApiHealthRoute
+  '/workspace/$clientId': typeof WorkspaceClientIdRoute
   '/admin': typeof AdminIndexRoute
+  '/workspace': typeof WorkspaceIndexRoute
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/api/admin/onboard-client': typeof ApiAdminOnboardClientRoute
   '/api/cron/sweeper': typeof ApiCronSweeperRoute
   '/api/inbound/resend': typeof ApiInboundResendRoute
   '/api/outbound/send': typeof ApiOutboundSendRoute
   '/api/webhooks/tally': typeof ApiWebhooksTallyRoute
   '/admin/client/$id/credentials': typeof AdminClientIdCredentialsRoute
+  '/admin/client/$id/dashboard': typeof AdminClientIdDashboardRoute
   '/admin/client/$id/infrastructure': typeof AdminClientIdInfrastructureRoute
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
@@ -278,9 +317,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/cookies': typeof CookiesRoute
+  '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
-  '/workspace': typeof WorkspaceRoute
+  '/workspace': typeof WorkspaceRouteWithChildren
   '/admin/credentials': typeof AdminCredentialsRoute
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
@@ -289,14 +329,18 @@ export interface FileRoutesById {
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
   '/api/health': typeof ApiHealthRoute
+  '/workspace/$clientId': typeof WorkspaceClientIdRoute
   '/admin/': typeof AdminIndexRoute
+  '/workspace/': typeof WorkspaceIndexRoute
   '/admin/client/$id': typeof AdminClientIdRouteWithChildren
   '/admin/clients/$clientSlug': typeof AdminClientsClientSlugRoute
+  '/api/admin/onboard-client': typeof ApiAdminOnboardClientRoute
   '/api/cron/sweeper': typeof ApiCronSweeperRoute
   '/api/inbound/resend': typeof ApiInboundResendRoute
   '/api/outbound/send': typeof ApiOutboundSendRoute
   '/api/webhooks/tally': typeof ApiWebhooksTallyRoute
   '/admin/client/$id/credentials': typeof AdminClientIdCredentialsRoute
+  '/admin/client/$id/dashboard': typeof AdminClientIdDashboardRoute
   '/admin/client/$id/infrastructure': typeof AdminClientIdInfrastructureRoute
   '/admin/client/$id/leads': typeof AdminClientIdLeadsRoute
   '/admin/client/$id/orchestration': typeof AdminClientIdOrchestrationRoute
@@ -314,6 +358,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/cookies'
+    | '/login'
     | '/privacy'
     | '/terms'
     | '/workspace'
@@ -325,14 +370,18 @@ export interface FileRouteTypes {
     | '/admin/vault'
     | '/api/agent'
     | '/api/health'
+    | '/workspace/$clientId'
     | '/admin/'
+    | '/workspace/'
     | '/admin/client/$id'
     | '/admin/clients/$clientSlug'
+    | '/api/admin/onboard-client'
     | '/api/cron/sweeper'
     | '/api/inbound/resend'
     | '/api/outbound/send'
     | '/api/webhooks/tally'
     | '/admin/client/$id/credentials'
+    | '/admin/client/$id/dashboard'
     | '/admin/client/$id/infrastructure'
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
@@ -347,9 +396,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/cookies'
+    | '/login'
     | '/privacy'
     | '/terms'
-    | '/workspace'
     | '/admin/credentials'
     | '/admin/infrastructure'
     | '/admin/ledger'
@@ -358,13 +407,17 @@ export interface FileRouteTypes {
     | '/admin/vault'
     | '/api/agent'
     | '/api/health'
+    | '/workspace/$clientId'
     | '/admin'
+    | '/workspace'
     | '/admin/clients/$clientSlug'
+    | '/api/admin/onboard-client'
     | '/api/cron/sweeper'
     | '/api/inbound/resend'
     | '/api/outbound/send'
     | '/api/webhooks/tally'
     | '/admin/client/$id/credentials'
+    | '/admin/client/$id/dashboard'
     | '/admin/client/$id/infrastructure'
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
@@ -380,6 +433,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/cookies'
+    | '/login'
     | '/privacy'
     | '/terms'
     | '/workspace'
@@ -391,14 +445,18 @@ export interface FileRouteTypes {
     | '/admin/vault'
     | '/api/agent'
     | '/api/health'
+    | '/workspace/$clientId'
     | '/admin/'
+    | '/workspace/'
     | '/admin/client/$id'
     | '/admin/clients/$clientSlug'
+    | '/api/admin/onboard-client'
     | '/api/cron/sweeper'
     | '/api/inbound/resend'
     | '/api/outbound/send'
     | '/api/webhooks/tally'
     | '/admin/client/$id/credentials'
+    | '/admin/client/$id/dashboard'
     | '/admin/client/$id/infrastructure'
     | '/admin/client/$id/leads'
     | '/admin/client/$id/orchestration'
@@ -415,11 +473,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   CookiesRoute: typeof CookiesRoute
+  LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
-  WorkspaceRoute: typeof WorkspaceRoute
+  WorkspaceRoute: typeof WorkspaceRouteWithChildren
   ApiAgentRoute: typeof ApiAgentRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiAdminOnboardClientRoute: typeof ApiAdminOnboardClientRoute
   ApiCronSweeperRoute: typeof ApiCronSweeperRoute
   ApiInboundResendRoute: typeof ApiInboundResendRoute
   ApiOutboundSendRoute: typeof ApiOutboundSendRoute
@@ -449,6 +509,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cookies': {
       id: '/cookies'
       path: '/cookies'
@@ -470,12 +537,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspace/': {
+      id: '/workspace/'
+      path: '/'
+      fullPath: '/workspace/'
+      preLoaderRoute: typeof WorkspaceIndexRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/admin/': {
       id: '/admin/'
       path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRouteRoute
+    }
+    '/workspace/$clientId': {
+      id: '/workspace/$clientId'
+      path: '/$clientId'
+      fullPath: '/workspace/$clientId'
+      preLoaderRoute: typeof WorkspaceClientIdRouteImport
+      parentRoute: typeof WorkspaceRoute
     }
     '/api/health': {
       id: '/api/health'
@@ -561,6 +642,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSweeperRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/onboard-client': {
+      id: '/api/admin/onboard-client'
+      path: '/api/admin/onboard-client'
+      fullPath: '/api/admin/onboard-client'
+      preLoaderRoute: typeof ApiAdminOnboardClientRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/clients/$clientSlug': {
       id: '/admin/clients/$clientSlug'
       path: '/clients/$clientSlug'
@@ -638,6 +726,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminClientIdInfrastructureRouteImport
       parentRoute: typeof AdminClientIdRoute
     }
+    '/admin/client/$id/dashboard': {
+      id: '/admin/client/$id/dashboard'
+      path: '/dashboard'
+      fullPath: '/admin/client/$id/dashboard'
+      preLoaderRoute: typeof AdminClientIdDashboardRouteImport
+      parentRoute: typeof AdminClientIdRoute
+    }
     '/admin/client/$id/credentials': {
       id: '/admin/client/$id/credentials'
       path: '/credentials'
@@ -657,6 +752,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminClientIdRouteChildren {
   AdminClientIdCredentialsRoute: typeof AdminClientIdCredentialsRoute
+  AdminClientIdDashboardRoute: typeof AdminClientIdDashboardRoute
   AdminClientIdInfrastructureRoute: typeof AdminClientIdInfrastructureRoute
   AdminClientIdLeadsRoute: typeof AdminClientIdLeadsRoute
   AdminClientIdOrchestrationRoute: typeof AdminClientIdOrchestrationRoute
@@ -671,6 +767,7 @@ interface AdminClientIdRouteChildren {
 
 const AdminClientIdRouteChildren: AdminClientIdRouteChildren = {
   AdminClientIdCredentialsRoute: AdminClientIdCredentialsRoute,
+  AdminClientIdDashboardRoute: AdminClientIdDashboardRoute,
   AdminClientIdInfrastructureRoute: AdminClientIdInfrastructureRoute,
   AdminClientIdLeadsRoute: AdminClientIdLeadsRoute,
   AdminClientIdOrchestrationRoute: AdminClientIdOrchestrationRoute,
@@ -715,15 +812,31 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
   AdminRouteRouteChildren,
 )
 
+interface WorkspaceRouteChildren {
+  WorkspaceClientIdRoute: typeof WorkspaceClientIdRoute
+  WorkspaceIndexRoute: typeof WorkspaceIndexRoute
+}
+
+const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceClientIdRoute: WorkspaceClientIdRoute,
+  WorkspaceIndexRoute: WorkspaceIndexRoute,
+}
+
+const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
+  WorkspaceRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   CookiesRoute: CookiesRoute,
+  LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
-  WorkspaceRoute: WorkspaceRoute,
+  WorkspaceRoute: WorkspaceRouteWithChildren,
   ApiAgentRoute: ApiAgentRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiAdminOnboardClientRoute: ApiAdminOnboardClientRoute,
   ApiCronSweeperRoute: ApiCronSweeperRoute,
   ApiInboundResendRoute: ApiInboundResendRoute,
   ApiOutboundSendRoute: ApiOutboundSendRoute,

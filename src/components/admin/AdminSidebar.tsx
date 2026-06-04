@@ -20,9 +20,14 @@ const WORKSPACE_SIDEBAR_LINKS: {
   { label: "Credentials", segment: "credentials" },
 ];
 
+function isManageCampaignsPath(pathname: string, clientId: string) {
+  const hubPath = `/admin/client/${clientId}`;
+  return pathname === hubPath || pathname === `${hubPath}/`;
+}
+
 function isDashboardPath(pathname: string, clientId: string) {
-  const dashboardPath = `/admin/client/${clientId}`;
-  return pathname === dashboardPath || pathname === `${dashboardPath}/`;
+  const dashboardPath = `/admin/client/${clientId}/dashboard`;
+  return pathname === dashboardPath || pathname.startsWith(`${dashboardPath}/`);
 }
 
 function isAgentsPath(pathname: string, clientId: string) {
@@ -115,6 +120,8 @@ export function AdminSidebar() {
   }, [clientId]);
 
   const workspaceSectionLabel = clientName ?? "Workspace";
+  const isCommandCenterHome =
+    pathname === "/admin" || pathname === "/admin/";
 
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-gray-200 bg-gray-50 md:w-[260px] md:min-w-[260px] md:border-b-0 md:border-r">
@@ -141,13 +148,16 @@ export function AdminSidebar() {
       </div>
 
       <div className="px-3 pb-3">
-        <button
-          type="button"
-          disabled
-          className="w-full rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors disabled:cursor-default disabled:opacity-80"
+        <Link
+          to="/admin"
+          className={`block w-full rounded-lg px-4 py-2.5 text-center text-sm font-medium transition-colors ${
+            isCommandCenterHome
+              ? "bg-black text-white shadow-sm hover:bg-gray-800"
+              : "border border-gray-200 bg-white text-gray-700 shadow-sm hover:border-gray-300 hover:bg-gray-50"
+          }`}
         >
           + Onboard Client
-        </button>
+        </Link>
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4 pt-1">
@@ -169,6 +179,12 @@ export function AdminSidebar() {
             </Link>
             <SidebarNavRow
               to="/admin/client/$id"
+              params={{ id: clientId }}
+              label="Manage Campaigns"
+              isActive={isManageCampaignsPath(pathname, clientId)}
+            />
+            <SidebarNavRow
+              to="/admin/client/$id/dashboard"
               params={{ id: clientId }}
               label="Analytics"
               isActive={isDashboardPath(pathname, clientId)}

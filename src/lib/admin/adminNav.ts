@@ -39,6 +39,7 @@ export const WORKSPACE_NAV: WorkspaceNavItem[] = [
 ];
 
 export function workspacePath(clientId: string, segment: Exclude<WorkspaceNavSegment, "global">): string {
-  if (segment === "dashboard") return `/admin/client/${clientId}`;
+  if (segment === "dashboard") return `/admin/client/${clientId}/dashboard`;
+  if (segment === "orchestration") return `/admin/client/${clientId}/orchestration`;
   return `/admin/client/${clientId}/${segment}`;
 }

@@ -1,21 +1,19 @@
-import { createClient } from '@supabase/supabase-js';
-import WebSocket from 'isomorphic-ws';
+import { createBrowserClient } from "@supabase/ssr";
+import WebSocket from "isomorphic-ws";
+import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/auth/env";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = getSupabaseUrl();
+const supabaseAnonKey = getSupabaseAnonKey();
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error("CRITICAL: Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: typeof window !== 'undefined', // Only persist in the browser
-  },
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
   realtime: {
-    transport: WebSocket, // This is the exact fix the stack trace requested
+    transport: WebSocket,
   },
   global: {
-    WebSocket: WebSocket,
-  }
+    WebSocket,
+  },
 });

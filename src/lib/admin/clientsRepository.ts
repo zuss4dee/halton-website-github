@@ -5,10 +5,22 @@ export type WorkspaceListItem = Pick<
   "slug" | "company" | "activeAgents" | "meetingsBooked" | "infrastructureStatus"
 >;
 
+export type ClientOnboardInput = {
+  companyName: string;
+  primaryContactEmail: string;
+  temporaryPassword: string;
+  targetIcp: string;
+  coreOffer: string;
+  sendingDomain: string;
+};
+
 export type ClientRow = {
   id?: string;
+  owner_user_id?: string | null;
   slug?: string | null;
   company_name?: string | null;
+  primary_contact_email?: string | null;
+  sending_domain?: string | null;
   industry?: string | null;
   monthly_retainer?: number | null;
   active_agents?: number | null;
