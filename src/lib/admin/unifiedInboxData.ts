@@ -6,7 +6,6 @@ export type UnifiedInboxClient = {
 };
 
 export type UnifiedInboxLead = LeadRow & {
-  company?: string | null;
   clients?: UnifiedInboxClient | UnifiedInboxClient[] | null;
 };
 

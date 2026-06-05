@@ -331,8 +331,7 @@ export function WorkspaceOutboundQueue({
               paginatedQueue.map((lead) => {
                 const isSelected = selectedLead?.id === lead.id;
                 const name = lead.prospect_name?.trim() || "Unknown Prospect";
-                const company =
-                  lead.company?.trim() || lead.target_company?.trim() || "—";
+                const company = lead.target_company?.trim() || "—";
                 const sentLabel = formatSentLabel(lead.sent_at, lead.created_at);
 
                 return (
@@ -430,9 +429,7 @@ export function WorkspaceOutboundQueue({
                 </p>
                 <p className="mt-1 text-sm text-gray-600">{selectedLead.email ?? "—"}</p>
                 <p className="mt-1 text-sm text-gray-600">
-                  {selectedLead.company?.trim() ||
-                    selectedLead.target_company?.trim() ||
-                    "—"}
+                  {selectedLead.target_company?.trim() || "—"}
                 </p>
               </div>
               <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-4 text-sm text-violet-900 shadow-sm">

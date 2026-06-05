@@ -57,7 +57,7 @@ export function AdminUnifiedInbox() {
             header: "Prospect",
             render: (lead) => (
               <span className="text-sm tracking-[0.04em] uppercase">
-                {lead.company?.trim() || "—"}
+                {lead.target_company?.trim() || lead.prospect_name?.trim() || "—"}
               </span>
             ),
           },

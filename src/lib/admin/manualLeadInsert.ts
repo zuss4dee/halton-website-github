@@ -28,7 +28,6 @@ export async function insertManualPipelineLead(
     client_id: clientId,
     email,
     prospect_name: firstName,
-    company: companyName,
     target_company: companyName,
     queue_status: LEAD_QUEUE_STATUS.ACTIVE,
     current_sequence_step: 1,
