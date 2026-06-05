@@ -24,7 +24,29 @@ type ResendDomainRecord = {
 };
 
 function resolveResendApiKey(): string | null {
-  return process.env.RESEND_API_KEY?.trim() || process.env.VITE_RESEND_API_KEY?.trim() || null;
+  // Bracket access avoids Vite inlining undefined when the key is only set at deploy runtime.
+  const fromProcess =
+    process.env["RESEND_API_KEY"]?.trim() || process.env.RESEND_API_KEY?.trim();
+  const fromViteMeta = (import.meta as ImportMeta & { env?: Record<string, string | undefined> })
+    .env?.VITE_RESEND_API_KEY?.trim();
+  const fromProcessVite = process.env.VITE_RESEND_API_KEY?.trim();
+
+  const apiKey = fromProcess || fromViteMeta || fromProcessVite || null;
+
+  if (!apiKey) {
+    console.error(
+      "[domainFleetService] RESEND API key not found. Checked sources:",
+      {
+        "process.env.RESEND_API_KEY": fromProcess ? "present" : "missing",
+        "import.meta.env.VITE_RESEND_API_KEY": fromViteMeta ? "present" : "missing",
+        "process.env.VITE_RESEND_API_KEY": fromProcessVite ? "present" : "missing",
+        nodeEnv: process.env.NODE_ENV ?? "unknown",
+        vercelEnv: process.env.VERCEL_ENV ?? "unknown",
+      },
+    );
+  }
+
+  return apiKey;
 }
 
 function normalizeDomainKey(value: string): string {
@@ -89,7 +111,12 @@ async function fetchAllResendDomains(resend: Resend): Promise<ResendDomainRecord
 export async function buildDomainFleetSnapshot(): Promise<DomainFleetApiResult> {
   const apiKey = resolveResendApiKey();
   if (!apiKey) {
-    return { ok: false, status: 500, error: "RESEND_API_KEY is not configured." };
+    return {
+      ok: false,
+      status: 500,
+      error:
+        "RESEND_API_KEY is not configured. Set RESEND_API_KEY (runtime) or VITE_RESEND_API_KEY (build) in Vercel — see server logs for [domainFleetService] source diagnostics.",
+    };
   }
 
   const supabase = createSupabaseServer();

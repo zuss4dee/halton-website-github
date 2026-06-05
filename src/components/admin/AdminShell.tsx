@@ -14,7 +14,6 @@ export function AdminShell({ children }: AdminShellProps) {
     pathname === "/admin/" ||
     pathname === "/admin/inbox" ||
     pathname === "/admin/domains" ||
-    pathname === "/admin/settings" ||
     pathname.startsWith("/admin/client/");
 
   return (

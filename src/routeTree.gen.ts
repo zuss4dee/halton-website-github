@@ -23,7 +23,6 @@ import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as AdminVaultRouteImport } from './routes/admin/vault'
 import { Route as AdminSystemRouteImport } from './routes/admin/system'
-import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
 import { Route as AdminLogsRouteImport } from './routes/admin/logs'
 import { Route as AdminLedgerRouteImport } from './routes/admin/ledger'
 import { Route as AdminInfrastructureRouteImport } from './routes/admin/infrastructure'
@@ -122,11 +121,6 @@ const AdminVaultRoute = AdminVaultRouteImport.update({
 const AdminSystemRoute = AdminSystemRouteImport.update({
   id: '/system',
   path: '/system',
-  getParentRoute: () => AdminRouteRoute,
-} as any)
-const AdminSettingsRoute = AdminSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminLogsRoute = AdminLogsRouteImport.update({
@@ -294,7 +288,6 @@ export interface FileRoutesByFullPath {
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
-  '/admin/settings': typeof AdminSettingsRoute
   '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
@@ -338,7 +331,6 @@ export interface FileRoutesByTo {
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
-  '/admin/settings': typeof AdminSettingsRoute
   '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
@@ -384,7 +376,6 @@ export interface FileRoutesById {
   '/admin/infrastructure': typeof AdminInfrastructureRoute
   '/admin/ledger': typeof AdminLedgerRoute
   '/admin/logs': typeof AdminLogsRoute
-  '/admin/settings': typeof AdminSettingsRoute
   '/admin/system': typeof AdminSystemRoute
   '/admin/vault': typeof AdminVaultRoute
   '/api/agent': typeof ApiAgentRoute
@@ -432,7 +423,6 @@ export interface FileRouteTypes {
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
-    | '/admin/settings'
     | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
@@ -476,7 +466,6 @@ export interface FileRouteTypes {
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
-    | '/admin/settings'
     | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
@@ -521,7 +510,6 @@ export interface FileRouteTypes {
     | '/admin/infrastructure'
     | '/admin/ledger'
     | '/admin/logs'
-    | '/admin/settings'
     | '/admin/system'
     | '/admin/vault'
     | '/api/agent'
@@ -670,13 +658,6 @@ declare module '@tanstack/react-router' {
       path: '/system'
       fullPath: '/admin/system'
       preLoaderRoute: typeof AdminSystemRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
-    '/admin/settings': {
-      id: '/admin/settings'
-      path: '/settings'
-      fullPath: '/admin/settings'
-      preLoaderRoute: typeof AdminSettingsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/logs': {
@@ -929,7 +910,6 @@ interface AdminRouteRouteChildren {
   AdminInfrastructureRoute: typeof AdminInfrastructureRoute
   AdminLedgerRoute: typeof AdminLedgerRoute
   AdminLogsRoute: typeof AdminLogsRoute
-  AdminSettingsRoute: typeof AdminSettingsRoute
   AdminSystemRoute: typeof AdminSystemRoute
   AdminVaultRoute: typeof AdminVaultRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -945,7 +925,6 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminInfrastructureRoute: AdminInfrastructureRoute,
   AdminLedgerRoute: AdminLedgerRoute,
   AdminLogsRoute: AdminLogsRoute,
-  AdminSettingsRoute: AdminSettingsRoute,
   AdminSystemRoute: AdminSystemRoute,
   AdminVaultRoute: AdminVaultRoute,
   AdminIndexRoute: AdminIndexRoute,

@@ -1,6 +1,6 @@
 export type GlobalNavItem = {
   label: string;
-  to: "/admin" | "/admin/inbox" | "/admin/domains" | "/admin/settings";
+  to: "/admin" | "/admin/inbox" | "/admin/domains";
 };
 
 export type WorkspaceNavSegment =
@@ -24,7 +24,6 @@ export const GLOBAL_NAV: GlobalNavItem[] = [
   { label: "00 // TENANT_INDEX", to: "/admin" },
   { label: "01 // UNIFIED_INBOX", to: "/admin/inbox" },
   { label: "02 // DOMAIN_FLEET", to: "/admin/domains" },
-  { label: "03 // SYSTEM_CONFIG", to: "/admin/settings" },
 ];
 
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [
