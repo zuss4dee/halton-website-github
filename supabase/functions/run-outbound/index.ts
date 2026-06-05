@@ -628,34 +628,82 @@ async function runResend(
   to: string,
   subject: string,
   textBody: string,
+  meta?: { nodeId?: string; intendedRecipient?: string },
 ): Promise<{ messageId: string; to: string; subject: string; format: "text" }> {
-  const resendResponse = await fetch("https://api.resend.com/emails", {
-    method: "POST",
+  const requestBody = {
+    from: "Damilare Adeosun <damilare@haltonworks.com>",
+    to,
+    subject,
+    text: textBody,
+    tags: [{ name: "category", value: "cold_outreach" }],
     headers: {
-      Authorization: `Bearer ${keys.resend_api_key}`,
-      "Content-Type": "application/json",
+      "X-Resend-Open-Tracking": "false",
+      "X-Resend-Click-Tracking": "false",
     },
-    body: JSON.stringify({
-      from: "Damilare Adeosun <damilare@haltonworks.com>",
-      to,
-      subject,
-      text: textBody,
-      tags: [{ name: "category", value: "cold_outreach" }],
-      // Resend open/click tracking is domain-scoped; plain-text + these headers avoid promotional HTML signals.
-      headers: {
-        "X-Resend-Open-Tracking": "false",
-        "X-Resend-Click-Tracking": "false",
-      },
-    }),
-  });
-
-  const resendData = (await parseJsonResponse(resendResponse, "resend_email")) as {
-    id?: string;
   };
 
-  if (!resendData.id) throw new Error("resend_email: Missing message id in response");
+  let resendResponse: Response;
+  try {
+    resendResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${keys.resend_api_key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (networkError) {
+    console.error("[resend_email] Resend send() network error:", networkError);
+    throw networkError;
+  }
 
-  return { messageId: resendData.id, to, subject, format: "text" };
+  const responseText = await resendResponse.text();
+  let resendData: Record<string, unknown> | null = null;
+
+  try {
+    resendData = responseText ? (JSON.parse(responseText) as Record<string, unknown>) : null;
+  } catch {
+    resendData = { raw: responseText };
+  }
+
+  if (!resendResponse.ok) {
+    console.error("[resend_email] Resend send() failed:", {
+      nodeId: meta?.nodeId ?? null,
+      intendedRecipient: meta?.intendedRecipient ?? to,
+      status: resendResponse.status,
+      statusText: resendResponse.statusText,
+      error: resendData,
+      request: {
+        to: requestBody.to,
+        subject: requestBody.subject,
+        textLength: textBody.length,
+      },
+    });
+    const message =
+      typeof resendData?.message === "string"
+        ? resendData.message
+        : typeof resendData?.error === "string"
+          ? resendData.error
+          : `resend_email: HTTP ${resendResponse.status}`;
+    throw new Error(message);
+  }
+
+  const messageId =
+    typeof resendData?.id === "string"
+      ? resendData.id
+      : typeof resendData?.id === "number"
+        ? String(resendData.id)
+        : null;
+
+  if (!messageId) {
+    console.error("[resend_email] Resend send() missing message id:", {
+      nodeId: meta?.nodeId ?? null,
+      response: resendData,
+    });
+    throw new Error("resend_email: Missing message id in response");
+  }
+
+  return { messageId, to, subject, format: "text" };
 }
 
 async function insertStepLog(
@@ -827,14 +875,16 @@ serve(async (req) => {
     for (const node of sortedNodes) {
       const nodeType = node.type === "tool" ? getNodeDataString(node, "executor", node.type) : node.type;
 
-      if (haltedAtApprovalGate) {
+      if (haltedAtApprovalGate && nodeType !== "resend_email") {
         console.info(`[${node.id}] Skipping ${nodeType} — engine halted at approval_gate`);
         executionLog.push({ nodeId: node.id, type: nodeType, status: "skipped_halted" });
         continue;
       }
 
-      if (nodeType === "resend_email") {
-        console.info(`[${node.id}] resend_email skipped — use sendApproved payload to send after human review`);
+      if (nodeType === "resend_email" && !testEmail?.trim()) {
+        console.info(
+          `[${node.id}] resend_email skipped — use sendApproved payload to send after human review`,
+        );
         executionLog.push({ nodeId: node.id, type: nodeType, status: "skipped_requires_approval" });
         continue;
       }
@@ -1035,14 +1085,43 @@ serve(async (req) => {
               queuePayload,
             );
             stepResult = queuePayload;
-            haltedAtApprovalGate = true;
+            haltedAtApprovalGate = !testEmail?.trim();
             break;
           }
 
           case "resend_email": {
-            throw new Error(
-              "resend_email reached during generation — graph must halt at approval_gate; use sendApproved to send.",
+            if (!keys.resend_api_key) {
+              throw new Error(formatMissingVaultKeyError("resend_api_key"));
+            }
+
+            const bodyText = resolveSanitizedEmailBody(node, sortedNodes, context);
+            const rawSubject = getNodeDataString(node, "subject", DEFAULT_RESEND_SUBJECT);
+            const subjectBase = interpolate(rawSubject, context);
+            const lead = findApolloLead(context, sortedNodes);
+            const intendedRecipient =
+              interpolate(getNodeDataString(node, "to", testEmail ?? ""), context) ||
+              lead?.email?.trim() ||
+              testEmail ||
+              SANDBOX_TO_EMAIL;
+            const subject = `[SANDBOX: ${intendedRecipient}] ${subjectBase}`;
+
+            const resendResult = await runResend(
+              keys,
+              SANDBOX_TO_EMAIL,
+              subject,
+              bodyText,
+              { nodeId: node.id, intendedRecipient },
             );
+
+            context[node.id] = {
+              ...resendResult,
+              sandbox: true,
+              intendedRecipient,
+            };
+            executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
+            console.info(`[${node.id}] resend_email sent`, context[node.id]);
+            stepResult = context[node.id];
+            break;
           }
 
           default: {
