@@ -48,6 +48,12 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     scopes: ["ceo"],
   },
   {
+    id: "configure_automated_sequence",
+    label: "Configure Automated Sequence",
+    description: "Save finalized email sequence steps to the workspace campaign.",
+    scopes: ["ceo"],
+  },
+  {
     id: "web_search",
     label: "Web Search",
     description: "Scrape target URLs via Firecrawl for research tasks.",
@@ -230,6 +236,7 @@ const CEO_SKILL_TOOL_MAP: Record<string, string> = {
   build_automation: "build_and_run_automation",
   hire_sub_agent: "hireSubAgent",
   trigger_outbound_campaign: "triggerOutboundCampaign",
+  configure_automated_sequence: "configureAutomatedSequence",
 };
 
 export type ResolvedAgentRow = {

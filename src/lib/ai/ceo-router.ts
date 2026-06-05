@@ -17,6 +17,7 @@ import {
   type KnowledgeCategory,
   type VaultSaveCategory,
 } from "@/lib/admin/clientKnowledge";
+import { upsertCampaignSequencesServer } from "@/lib/admin/campaignSequencesRepository";
 import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig";
 import {
   fetchWorkspaceCeoAgent,
@@ -163,6 +164,16 @@ Do NOT delegate email drafting to COPYWRITER or any sub-agent to bypass the DAG.
 Required pipeline: deepseek_llm (label "DeepSeek Writer") -> copy_reviewer (type copy_reviewer, label "Deliverability Chief") -> approval_gate (queues sanitized body) -> resend_email (optional test send).
 The 4th node in a 5-step Apollo campaign MUST be type copy_reviewer with data.label exactly "Deliverability Chief" — never "AI Writer".
 approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.copy}} only.
+`;
+
+  const swarmOrchestrationDirective = `
+--- SWARM ORCHESTRATION (SEQUENCE CAMPAIGNS) ---
+You are an Orchestrator. You do not do the grunt work yourself.
+When the human operator asks you to draft an email sequence and launch a campaign, you MUST follow this strict chain of command:
+1. Use hireSubAgent to provision specialists (e.g., Copywriter for drafting, QA Lead for spam/tone review).
+2. Delegate drafting and review to those sub-agents via spawn_sub_agent.
+3. Only after sub-agents have drafted and approved the work, use configureAutomatedSequence to save the finalized sequence.
+4. Once saved, use triggerOutboundCampaign to launch the sequence, then report success to the human operator.
 `;
 
   await logInsert(executionId, clientId, ceoAgent.id, "SPAWN", {
@@ -784,6 +795,66 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         return message;
       },
     }),
+    configureAutomatedSequence: tool({
+      description:
+        "Saves finalized email sequence steps to the workspace campaign_sequences table for the active client. REQUIRED: every step MUST use standard merge variables {{first_name}} and {{company_name}} in the subject or body ({{prospect_name}} and {{company}} are also supported). Only call after sub-agents have drafted and approved the sequence.",
+      inputSchema: z.object({
+        steps: z
+          .array(
+            z.object({
+              step_number: z
+                .number()
+                .int()
+                .min(1)
+                .max(3)
+                .describe("Sequence step index (1 = cold open, 2 = follow-up, 3 = breakup)."),
+              subject: z.string().describe("Email subject line with merge variables."),
+              body: z.string().describe("Email body with merge variables."),
+              delay_days: z
+                .number()
+                .int()
+                .min(0)
+                .describe("Days to wait after the previous step before sending."),
+            }),
+          )
+          .min(1)
+          .max(3),
+      }),
+      execute: async ({ steps }) => {
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "CONFIGURE_AUTOMATED_SEQUENCE",
+          clientId,
+          stepCount: steps.length,
+        });
+
+        const result = await upsertCampaignSequencesServer(clientId, steps);
+
+        if ("error" in result) {
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "CONFIGURE_AUTOMATED_SEQUENCE",
+            message: result.error,
+          });
+          return result.error;
+        }
+
+        const summary = result.steps
+          .map(
+            (step) =>
+              `Step ${step.step_number}: "${step.subject}" (delay ${step.delay_days}d)`,
+          )
+          .join("\n");
+
+        const message = `Saved ${result.steps.length} sequence step(s) for this workspace.\n${summary}`;
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          action: "CONFIGURE_AUTOMATED_SEQUENCE",
+          stepCount: result.steps.length,
+        });
+
+        return message;
+      },
+    }),
     triggerOutboundCampaign: tool({
       description:
         "Launches the automated outbound sequence for this workspace by triggering the outbound processing cron. Use once the team is hired and the human operator has configured the pipeline.",
@@ -847,6 +918,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
   const ceoTools = {
     ...enabledCeoTools,
     hireSubAgent: tools.hireSubAgent,
+    configureAutomatedSequence: tools.configureAutomatedSequence,
     triggerOutboundCampaign: tools.triggerOutboundCampaign,
   };
 
@@ -863,10 +935,12 @@ ${knowledgeVaultDirective}
 
 ${emailDagDirective}
 
+${swarmOrchestrationDirective}
+
 ${clientContext}`,
     prompt,
     tools: ceoTools,
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(10),
   });
 
   await logInsert(executionId, clientId, ceoAgent.id, "THOUGHT", {

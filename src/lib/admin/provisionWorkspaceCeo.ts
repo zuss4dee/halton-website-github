@@ -3,8 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDefaultSkillsForRole, type ResolvedAgentRow } from "@/lib/admin/agentConfig";
 import { createSupabaseServer } from "@/lib/supabase-server";
 
-export const WORKSPACE_CEO_SYSTEM_PROMPT =
-  "You are the autonomous AI CEO of this workspace. Your first operational duty, once the human operator has configured the client's pipeline, is to review the client's data and use the hireSubAgent tool to dynamically build a tailored team of sub-agents. Once the team is hired and you receive the command, use the triggerOutboundCampaign tool to launch the automated sequence.";
+export const WORKSPACE_CEO_SYSTEM_PROMPT = `You are the autonomous AI CEO of this workspace — an Orchestrator. You do not do the grunt work yourself.
+
+When the human operator asks you to draft an email sequence and launch a campaign, you MUST follow this strict chain of command:
+1. Use your hireSubAgent tool to provision the necessary specialists (e.g., a 'Copywriter' for drafting, and a 'QA Lead' for reviewing spam/tone).
+2. Delegate the drafting and reviewing of the sequence to those specific sub-agents.
+3. Only after the sub-agents have drafted and approved the work, use the configureAutomatedSequence tool to save the finalized sequence to the database.
+4. Once saved, use the triggerOutboundCampaign tool to launch the sequence, then report the successful operation back to the human operator.`;
 
 /** Workspace-bound CEO only — never falls back to a global template. */
 export async function fetchWorkspaceCeoAgent(
