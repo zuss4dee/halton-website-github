@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { LEAD_QUEUE_STATUS } from "@/lib/admin/leadsRepository";
 import { createSupabaseServer } from "@/lib/supabase-server";
+import { alertLeadsChannel } from "@/lib/tools/alerting";
 
 export type ResendInboundPayload = {
   type?: string;
@@ -134,32 +135,10 @@ async function notifySlackHotLead(input: {
   subject: string;
   replyText: string;
 }): Promise<void> {
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL?.trim();
-  if (!webhookUrl) {
-    console.warn("[api/inbound/resend] SLACK_WEBHOOK_URL not set; skipping Slack notification");
-    return;
-  }
+  const result = await alertLeadsChannel(buildSlackHotLeadMessage(input));
 
-  try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: buildSlackHotLeadMessage(input),
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      console.error(
-        "[api/inbound/resend] Slack notification failed:",
-        response.status,
-        body,
-      );
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("[api/inbound/resend] Slack notification error:", message);
+  if (!result.ok) {
+    console.warn("[api/inbound/resend] Slack leads alert skipped:", result.error);
   }
 }
 

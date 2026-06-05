@@ -22,6 +22,7 @@ import {
   formatOperationalMemorySection,
   logOperationalObservation as persistOperationalObservation,
 } from "@/lib/admin/agentMemory";
+import { alertHumanOperator } from "@/lib/tools/alerting";
 import { upsertCampaignSequencesServer } from "@/lib/admin/campaignSequencesRepository";
 import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig";
 import { buildCronAuthHeaders, getCronSecret } from "@/lib/cron/cronAuth";
@@ -906,6 +907,48 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         return message;
       },
     }),
+    alertHumanOperator: tool({
+      description:
+        "Sends a Slack alert to the human operator. Use channel 'ops' for technical failures, infrastructure errors, or system status. Use channel 'leads' for positive prospect engagement, meeting bookings, or conversions. Never send technical logs to the leads channel.",
+      inputSchema: z.object({
+        channel: z
+          .enum(["ops", "leads"])
+          .describe("ops = infrastructure/system alerts; leads = revenue-positive engagement."),
+        level: z
+          .enum(["warning", "critical"])
+          .describe("warning for non-blocking issues; critical for urgent failures."),
+        message: z.string().describe("Clear, actionable alert body for the operator."),
+      }),
+      execute: async ({ channel, level, message }) => {
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "ALERT_HUMAN_OPERATOR",
+          channel,
+          level,
+        });
+
+        const result = await alertHumanOperator(channel, level, message);
+
+        if (!result.ok) {
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "ALERT_HUMAN_OPERATOR",
+            channel,
+            message: result.error,
+          });
+          return result.error;
+        }
+
+        const confirmation = `Slack alert sent to ${channel} channel (${level}).`;
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          action: "ALERT_HUMAN_OPERATOR",
+          channel,
+          level,
+        });
+
+        return confirmation;
+      },
+    }),
     triggerOutboundCampaign: tool({
       description:
         "Launches the automated outbound sequence for this workspace by triggering the outbound processing cron. Use once the team is hired and the human operator has configured the pipeline.",
@@ -1011,6 +1054,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
     hireSubAgent: tools.hireSubAgent,
     configureAutomatedSequence: tools.configureAutomatedSequence,
     logOperationalObservation: tools.logOperationalObservation,
+    alertHumanOperator: tools.alertHumanOperator,
     triggerOutboundCampaign: tools.triggerOutboundCampaign,
   };
 

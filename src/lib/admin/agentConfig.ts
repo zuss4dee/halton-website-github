@@ -60,6 +60,12 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     scopes: ["ceo"],
   },
   {
+    id: "alert_human_operator",
+    label: "Alert Human Operator",
+    description: "Send Slack alerts to ops or leads channels.",
+    scopes: ["ceo"],
+  },
+  {
     id: "web_search",
     label: "Web Search",
     description: "Scrape target URLs via Firecrawl for research tasks.",
@@ -245,6 +251,7 @@ const CEO_SKILL_TOOL_MAP: Record<string, string> = {
   trigger_outbound_campaign: "triggerOutboundCampaign",
   configure_automated_sequence: "configureAutomatedSequence",
   log_operational_observation: "logOperationalObservation",
+  alert_human_operator: "alertHumanOperator",
 };
 
 export type ResolvedAgentRow = {

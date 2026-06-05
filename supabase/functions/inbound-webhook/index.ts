@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { alertLeadsChannel } from "../_shared/alerting.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,33 +84,29 @@ function buildOutboundQueueUrl(clientId: string | null): string | null {
   return `${appBaseUrl}/admin/client/${clientId}/outbound`;
 }
 
-async function notifySlackHotLead(input: {
+function buildHotLeadSlackMessage(input: {
   prospectLabel: string;
   replySnippet: string;
   outboundUrl: string | null;
-}): Promise<boolean> {
-  const webhookUrl = Deno.env.get("SLACK_WEBHOOK_URL")?.trim();
-  if (!webhookUrl) {
-    console.warn("[inbound-webhook] SLACK_WEBHOOK_URL not set; skipping Slack notification");
-    return false;
-  }
-
-  let message =
-    `🔥 NEW HOT LEAD: ${input.prospectLabel} replied: ${input.replySnippet}`;
+}): string {
+  let message = `*Prospect:* ${input.prospectLabel}\n*Reply:* ${input.replySnippet}`;
 
   if (input.outboundUrl) {
     message += `\n<${input.outboundUrl}|Open Outbound Queue>`;
   }
 
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: message }),
-  });
+  return message;
+}
 
-  if (!response.ok) {
-    const body = await response.text();
-    console.error("[inbound-webhook] Slack notification failed:", response.status, body);
+async function notifySlackHotLead(input: {
+  prospectLabel: string;
+  replySnippet: string;
+  outboundUrl: string | null;
+}): Promise<boolean> {
+  const result = await alertLeadsChannel(buildHotLeadSlackMessage(input));
+
+  if (!result.ok) {
+    console.warn("[inbound-webhook] Slack leads alert skipped:", result.error);
     return false;
   }
 

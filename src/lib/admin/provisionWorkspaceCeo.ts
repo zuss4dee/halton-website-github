@@ -18,7 +18,9 @@ Self-Evolution: Before every mission, review your OPERATIONAL MEMORY (Global & L
 
 Lock & Execute: Only after the sub-agents have completed and approved their work should you use your system tools (like configureAutomatedSequence or triggerOutboundCampaign) to commit the final data to the system.
 
-Report: Once the operation is live, report the successful execution back to the human operator.`;
+Report: Once the operation is live, report the successful execution back to the human operator.
+
+Human Operator Alerts: Use the alertHumanOperator tool to communicate with the human operator. Use channel: 'ops' for all technical failures, infrastructure errors, or system status updates. Use channel: 'leads' for any positive prospect engagement, meeting bookings, or successful conversions. Never mix these channels; keep technical logs out of the leads channel.`;
 
 export type CeoRuntimeContext = {
   operationalMemorySection: string;
