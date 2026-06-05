@@ -223,12 +223,13 @@ export async function saveAgentStudioConfig(
   };
 
   if (isCeoRole(agent.role)) {
-    const { data, error } = await supabase
-      .from("agents")
-      .update(payload)
-      .eq("id", agent.id)
-      .select("id")
-      .single();
+    let query = supabase.from("agents").update(payload).eq("id", agent.id);
+
+    if (agent.client_id) {
+      query = query.eq("client_id", workspaceClientId);
+    }
+
+    const { data, error } = await query.select("id").single();
 
     if (error) return { ok: false, error: error.message };
     return { ok: true, agentId: data.id };

@@ -19,8 +19,12 @@ import {
 } from "@/lib/admin/clientKnowledge";
 import { upsertCampaignSequencesServer } from "@/lib/admin/campaignSequencesRepository";
 import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig";
+import { buildCronAuthHeaders, getCronSecret } from "@/lib/cron/cronAuth";
+import { processOutboundQueue } from "@/lib/cron/processOutbound";
 import {
+  buildCeoLlmSystemMessage,
   fetchWorkspaceCeoAgent,
+  fetchWorkspaceCeoSystemPrompt,
   resolveAgentForWorkspaceServer,
 } from "@/lib/admin/provisionWorkspaceCeo";
 import { getSupabaseServer } from "@/lib/supabase-server";
@@ -164,16 +168,6 @@ Do NOT delegate email drafting to COPYWRITER or any sub-agent to bypass the DAG.
 Required pipeline: deepseek_llm (label "DeepSeek Writer") -> copy_reviewer (type copy_reviewer, label "Deliverability Chief") -> approval_gate (queues sanitized body) -> resend_email (optional test send).
 The 4th node in a 5-step Apollo campaign MUST be type copy_reviewer with data.label exactly "Deliverability Chief" — never "AI Writer".
 approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.copy}} only.
-`;
-
-  const swarmOrchestrationDirective = `
---- SWARM ORCHESTRATION (SEQUENCE CAMPAIGNS) ---
-You are an Orchestrator. You do not do the grunt work yourself.
-When the human operator asks you to draft an email sequence and launch a campaign, you MUST follow this strict chain of command:
-1. Use hireSubAgent to provision specialists (e.g., Copywriter for drafting, QA Lead for spam/tone review).
-2. Delegate drafting and review to those sub-agents via spawn_sub_agent.
-3. Only after sub-agents have drafted and approved the work, use configureAutomatedSequence to save the finalized sequence.
-4. Once saved, use triggerOutboundCampaign to launch the sequence, then report success to the human operator.
 `;
 
   await logInsert(executionId, clientId, ceoAgent.id, "SPAWN", {
@@ -860,8 +854,7 @@ When the human operator asks you to draft an email sequence and launch a campaig
         "Launches the automated outbound sequence for this workspace by triggering the outbound processing cron. Use once the team is hired and the human operator has configured the pipeline.",
       inputSchema: z.object({}),
       execute: async () => {
-        const cronSecret = process.env.CRON_SECRET;
-        if (!cronSecret) {
+        if (!getCronSecret()) {
           const message = "CRON_SECRET is not configured; cannot trigger outbound campaign.";
           await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
             status: "ERROR",
@@ -876,24 +869,9 @@ When the human operator asks you to draft an email sequence and launch a campaig
           clientId,
         });
 
-        const baseUrl = resolveCronBaseUrl();
-        const cronUrl = new URL(`${baseUrl}/api/cron/process-outbound`);
-        cronUrl.searchParams.set("clientId", clientId);
-        const response = await fetch(cronUrl.toString(), {
-          method: "GET",
-          headers: {
-            "x-cron-secret": cronSecret,
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        });
-
-        const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-
-        if (!response.ok) {
-          const message =
-            typeof body?.error === "string"
-              ? body.error
-              : `Outbound cron failed (${response.status}).`;
+        const cronAuthHeaders = buildCronAuthHeaders();
+        if (!cronAuthHeaders) {
+          const message = "CRON_SECRET is not configured; cannot trigger outbound campaign.";
           await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
             status: "ERROR",
             action: "TRIGGER_OUTBOUND_CAMPAIGN",
@@ -902,13 +880,69 @@ When the human operator asks you to draft an email sequence and launch a campaig
           return message;
         }
 
-        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
-          status: "SUCCESS",
-          action: "TRIGGER_OUTBOUND_CAMPAIGN",
-          result: body,
-        });
+        const baseUrl = resolveCronBaseUrl();
+        const cronUrl = new URL(`${baseUrl}/api/cron/process-outbound`);
+        cronUrl.searchParams.set("clientId", clientId);
 
-        return body ?? { success: true };
+        let body: Record<string, unknown> | null = null;
+
+        try {
+          const response = await fetch(cronUrl.toString(), {
+            method: "GET",
+            headers: cronAuthHeaders,
+          });
+
+          body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+
+          if (response.ok) {
+            const result = { success: true, ...body };
+            await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+              status: "SUCCESS",
+              action: "TRIGGER_OUTBOUND_CAMPAIGN",
+              result,
+            });
+            return result;
+          }
+
+          if (response.status !== 401) {
+            const message =
+              typeof body?.error === "string"
+                ? body.error
+                : `Outbound cron failed (${response.status}).`;
+            await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+              status: "ERROR",
+              action: "TRIGGER_OUTBOUND_CAMPAIGN",
+              message,
+            });
+            return message;
+          }
+        } catch (fetchError) {
+          console.error("[triggerOutboundCampaign] Cron fetch failed:", fetchError);
+        }
+
+        // Self-fetch can 401 behind deployment protection; invoke the handler directly.
+        try {
+          const directResult = await processOutboundQueue({ clientId });
+          const result = { success: true, ...directResult };
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "SUCCESS",
+            action: "TRIGGER_OUTBOUND_CAMPAIGN",
+            result,
+            via: "direct",
+          });
+          return result;
+        } catch (directError) {
+          const message =
+            directError instanceof Error
+              ? directError.message
+              : "Outbound cron failed after auth retry.";
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "TRIGGER_OUTBOUND_CAMPAIGN",
+            message,
+          });
+          return message;
+        }
       },
     }),
   };
@@ -922,22 +956,16 @@ When the human operator asks you to draft an email sequence and launch a campaig
     triggerOutboundCampaign: tools.triggerOutboundCampaign,
   };
 
+  const { systemPrompt: ceoSystemPrompt } = await fetchWorkspaceCeoSystemPrompt(clientId);
+
   const response = await generateText({
     model: deepseek("deepseek-chat"),
-    system: `${ceoAgent.system_prompt}
-
-Here is your current roster of specialized sub-agents you can delegate to:
-${rosterText}
-
-When delegating, use the exact Role name.
-
-${knowledgeVaultDirective}
-
-${emailDagDirective}
-
-${swarmOrchestrationDirective}
-
-${clientContext}`,
+    system: buildCeoLlmSystemMessage(ceoSystemPrompt, {
+      rosterText,
+      clientContext,
+      knowledgeVaultDirective,
+      emailDagDirective,
+    }),
     prompt,
     tools: ceoTools,
     stopWhen: stepCountIs(10),

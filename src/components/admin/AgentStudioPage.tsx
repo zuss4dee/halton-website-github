@@ -242,7 +242,15 @@ export function AgentStudioPage({ clientId, agentId }: AgentStudioPageProps) {
 
         <div className="space-y-6 lg:col-span-9">
           <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">System prompt</h2>
+            <h2 className="mb-1 text-lg font-semibold text-gray-900">System prompt</h2>
+            {agent.role?.trim().toUpperCase() === "CEO" ? (
+              <p className="mb-4 text-sm text-gray-500">
+                Saved here as <code className="text-xs">agents.system_prompt</code> and injected
+                dynamically on every CEO mission dispatch.
+              </p>
+            ) : (
+              <div className="mb-4" />
+            )}
             <textarea
               value={draft.system_prompt}
               onChange={(event) =>

@@ -3,13 +3,42 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDefaultSkillsForRole, type ResolvedAgentRow } from "@/lib/admin/agentConfig";
 import { createSupabaseServer } from "@/lib/supabase-server";
 
-export const WORKSPACE_CEO_SYSTEM_PROMPT = `You are the autonomous AI CEO of this workspace — an Orchestrator. You do not do the grunt work yourself.
+/** Default seed for newly provisioned workspace CEOs — editable via Agent Studio (`agents.system_prompt`). */
+export const WORKSPACE_CEO_SYSTEM_PROMPT =
+  "You are the autonomous AI CEO of this workspace — a Master Orchestrator. Your fundamental purpose is to analyze human operator commands, break them into operational steps, and manage a swarm of sub-agents to execute them. You do not do the grunt work yourself. When you receive ANY complex operational command, you MUST follow this strict chain of command: 1. Use your hireSubAgent tool to provision the specific specialists needed. 2. Delegate the task entirely to them. 3. Only after the sub-agents have completed and approved their work should you use your system tools (like configureAutomatedSequence or triggerOutboundCampaign) to commit the final data to the system. 4. Report the successful execution back to the human operator.";
 
-When the human operator asks you to draft an email sequence and launch a campaign, you MUST follow this strict chain of command:
-1. Use your hireSubAgent tool to provision the necessary specialists (e.g., a 'Copywriter' for drafting, and a 'QA Lead' for reviewing spam/tone).
-2. Delegate the drafting and reviewing of the sequence to those specific sub-agents.
-3. Only after the sub-agents have drafted and approved the work, use the configureAutomatedSequence tool to save the finalized sequence to the database.
-4. Once saved, use the triggerOutboundCampaign tool to launch the sequence, then report the successful operation back to the human operator.`;
+export type CeoRuntimeContext = {
+  rosterText: string;
+  clientContext: string;
+  knowledgeVaultDirective: string;
+  emailDagDirective: string;
+};
+
+export function resolveCeoSystemPrompt(dbPrompt: string | null | undefined): string {
+  const trimmed = dbPrompt?.trim();
+  return trimmed || WORKSPACE_CEO_SYSTEM_PROMPT;
+}
+
+/** Builds the LLM system message: Agent Studio prompt + per-request runtime context. */
+export function buildCeoLlmSystemMessage(
+  dbSystemPrompt: string | null | undefined,
+  runtime: CeoRuntimeContext,
+): string {
+  const corePrompt = resolveCeoSystemPrompt(dbSystemPrompt);
+
+  return `${corePrompt}
+
+Here is your current roster of specialized sub-agents you can delegate to:
+${runtime.rosterText}
+
+When delegating, use the exact Role name.
+
+${runtime.knowledgeVaultDirective}
+
+${runtime.emailDagDirective}
+
+${runtime.clientContext}`;
+}
 
 /** Workspace-bound CEO only — never falls back to a global template. */
 export async function fetchWorkspaceCeoAgent(
@@ -25,7 +54,9 @@ export async function fetchWorkspaceCeoAgent(
 
   const { data, error } = await supabase
     .from("agents")
-    .select("*")
+    .select(
+      "id, name, role, model, system_prompt, skills, tool_bindings, is_active, client_id, temperature, reasoning_config",
+    )
     .eq("role", "CEO")
     .eq("client_id", scopedWorkspaceId)
     .maybeSingle();
@@ -156,4 +187,17 @@ export async function provisionWorkspaceCeoAgent(
   }
 
   return { ok: true, agentId: data.id, created: true };
+}
+
+/** Loads the latest CEO `agents.system_prompt` from the database before each LLM call. */
+export async function fetchWorkspaceCeoSystemPrompt(
+  workspaceId: string,
+  admin?: SupabaseClient,
+): Promise<{ systemPrompt: string | null; error?: string }> {
+  const resolved = await fetchWorkspaceCeoAgent(workspaceId, admin);
+  if (!resolved.agent) {
+    return { systemPrompt: null, error: resolved.error };
+  }
+
+  return { systemPrompt: resolved.agent.system_prompt ?? null };
 }
