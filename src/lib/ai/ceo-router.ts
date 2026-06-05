@@ -23,6 +23,7 @@ import {
   logOperationalObservation as persistOperationalObservation,
 } from "@/lib/admin/agentMemory";
 import { alertHumanOperator } from "@/lib/tools/alerting";
+import { invokeRunOutbound } from "@/lib/tools/automation";
 import { upsertCampaignSequencesServer } from "@/lib/admin/campaignSequencesRepository";
 import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig";
 import { buildCronAuthHeaders, getCronSecret } from "@/lib/cron/cronAuth";
@@ -426,17 +427,15 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           return message;
         }
 
-        const { data: runData, error: runError } = await supabase.functions.invoke("run-outbound", {
-          body: {
-            clientId: targetClientId,
-            nodes,
-            edges,
-            ...(testEmail ? { testEmail } : {}),
-          },
+        const runResult = await invokeRunOutbound({
+          clientId: targetClientId,
+          nodes,
+          edges,
+          ...(testEmail ? { testEmail } : {}),
         });
 
-        if (runError) {
-          const message = `Workflow execution failed: ${runError.message}`;
+        if (!runResult.ok) {
+          const message = `Workflow execution failed: ${runResult.error}`;
           await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
             status: "ERROR",
             action: "TRIGGER_AUTOMATION_SOP",
@@ -445,12 +444,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           return message;
         }
 
-        const runPayload = runData as {
-          success?: boolean;
-          executionLog?: Array<{ nodeId: string; type?: string; status: string }>;
-          context?: Record<string, unknown>;
-          error?: string;
-        } | null;
+        const runPayload = runResult.data;
         if (runPayload?.error) {
           const message = `Workflow execution failed: ${runPayload.error}`;
           await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
@@ -612,17 +606,15 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           return message;
         }
 
-        const { data: runData, error: runError } = await supabase.functions.invoke("run-outbound", {
-          body: {
-            clientId: targetClientId,
-            nodes: laidOutNodes,
-            edges,
-            testEmail: testEmail.trim(),
-          },
+        const runResult = await invokeRunOutbound({
+          clientId: targetClientId,
+          nodes: laidOutNodes,
+          edges,
+          testEmail: testEmail.trim(),
         });
 
-        if (runError) {
-          const message = `Workflow execution failed: ${runError.message}`;
+        if (!runResult.ok) {
+          const message = `Workflow execution failed: ${runResult.error}`;
           await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
             status: "ERROR",
             action: "BUILD_AND_RUN_AUTOMATION",
@@ -631,12 +623,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           return message;
         }
 
-        const runPayload = runData as {
-          success?: boolean;
-          executionLog?: Array<{ nodeId: string; type?: string; status: string }>;
-          context?: Record<string, unknown>;
-          error?: string;
-        } | null;
+        const runPayload = runResult.data;
 
         if (runPayload?.error) {
           const message = `Workflow execution failed: ${runPayload.error}`;
