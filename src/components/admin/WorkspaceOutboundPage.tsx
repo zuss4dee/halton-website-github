@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { AddLeadSheet } from "@/components/admin/AddLeadSheet";
 import { BulkLeadInjector } from "@/components/admin/BulkLeadInjector";
 import { HumanReviewQueue } from "@/components/admin/WorkspaceOutboundQueue";
 
@@ -9,6 +10,7 @@ type WorkspaceOutboundPageProps = {
 
 export function WorkspaceOutboundPage({ clientId }: WorkspaceOutboundPageProps) {
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
 
   return (
     <div className="space-y-10">
@@ -31,7 +33,19 @@ export function WorkspaceOutboundPage({ clientId }: WorkspaceOutboundPageProps) 
         onProcessingComplete={() => setQueueRefreshKey((key) => key + 1)}
       />
 
-      <HumanReviewQueue clientId={clientId} refreshKey={queueRefreshKey} embedded />
+      <AddLeadSheet
+        clientId={clientId}
+        open={addLeadOpen}
+        onOpenChange={setAddLeadOpen}
+        onSuccess={() => setQueueRefreshKey((key) => key + 1)}
+      />
+
+      <HumanReviewQueue
+        clientId={clientId}
+        refreshKey={queueRefreshKey}
+        embedded
+        onAddLead={() => setAddLeadOpen(true)}
+      />
     </div>
   );
 }

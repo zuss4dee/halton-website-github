@@ -6,6 +6,7 @@ import {
   LEAD_QUEUE_STATUS,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
+import { AddLeadTrigger } from "@/components/admin/AddLeadSheet";
 import { sendApprovedLeadEmail } from "@/lib/admin/outboundSend";
 import { supabase } from "@/lib/supabase";
 
@@ -13,6 +14,7 @@ type WorkspaceOutboundQueueProps = {
   clientId: string;
   refreshKey?: number;
   embedded?: boolean;
+  onAddLead?: () => void;
 };
 
 /** Alias for workspace human review queue & outbox */
@@ -21,7 +23,7 @@ export function HumanReviewQueue(props: WorkspaceOutboundQueueProps) {
   return <WorkspaceOutboundQueue {...props} />;
 }
 
-type QueueTab = "pending" | "sent";
+type QueueTab = "active" | "pending" | "sent";
 
 const LIST_PAGE_SIZE = 10;
 
@@ -74,10 +76,11 @@ export function WorkspaceOutboundQueue({
   clientId,
   refreshKey = 0,
   embedded = false,
+  onAddLead,
 }: WorkspaceOutboundQueueProps) {
   const workspaceClientId = clientId.trim();
 
-  const [activeTab, setActiveTab] = useState<QueueTab>("pending");
+  const [activeTab, setActiveTab] = useState<QueueTab>("active");
   const [queue, setQueue] = useState<LeadRow[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
   const [editedCopy, setEditedCopy] = useState("");
@@ -86,6 +89,7 @@ export function WorkspaceOutboundQueue({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [listPage, setListPage] = useState(1);
 
+  const isActiveTab = activeTab === "active";
   const isSentTab = activeTab === "sent";
   const totalItems = queue.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / LIST_PAGE_SIZE));
@@ -107,7 +111,11 @@ export function WorkspaceOutboundQueue({
     setIsLoading(true);
 
     const queueStatus =
-      activeTab === "pending" ? LEAD_QUEUE_STATUS.PENDING : LEAD_QUEUE_STATUS.SENT;
+      activeTab === "pending"
+        ? LEAD_QUEUE_STATUS.PENDING
+        : activeTab === "sent"
+          ? LEAD_QUEUE_STATUS.SENT
+          : LEAD_QUEUE_STATUS.ACTIVE;
 
     let query = supabase
       .from("leads")
@@ -118,7 +126,9 @@ export function WorkspaceOutboundQueue({
     query =
       activeTab === "sent"
         ? query.order("sent_at", { ascending: false, nullsFirst: false })
-        : query.order("created_at", { ascending: false });
+        : activeTab === "active"
+          ? query.order("next_send_date", { ascending: true, nullsFirst: false })
+          : query.order("created_at", { ascending: false });
 
     const { data, error } = await query;
 
@@ -164,7 +174,9 @@ export function WorkspaceOutboundQueue({
   }, [statusMessage]);
 
   const handleApprove = async () => {
-    if (!selectedLead?.id || isSubmitting || isSentTab || !workspaceClientId) return;
+    if (!selectedLead?.id || isSubmitting || isSentTab || isActiveTab || !workspaceClientId) {
+      return;
+    }
     if (selectedLead.client_id && selectedLead.client_id !== workspaceClientId) {
       console.error("WORKSPACE_ISOLATION: lead client_id mismatch");
       return;
@@ -211,7 +223,9 @@ export function WorkspaceOutboundQueue({
   };
 
   const handleDiscard = async () => {
-    if (!selectedLead?.id || isSubmitting || isSentTab || !workspaceClientId) return;
+    if (!selectedLead?.id || isSubmitting || isSentTab || isActiveTab || !workspaceClientId) {
+      return;
+    }
     if (selectedLead.client_id && selectedLead.client_id !== workspaceClientId) {
       console.error("WORKSPACE_ISOLATION: lead client_id mismatch");
       return;
@@ -242,11 +256,21 @@ export function WorkspaceOutboundQueue({
     setIsSubmitting(false);
   };
 
-  const listHeading = isSentTab ? "Sent history" : "Pending targets";
-  const editorHeading = isSentTab ? "Sent copy" : "Draft editor";
-  const emptyListCopy = isSentTab
-    ? "No sent campaigns yet."
-    : "No drafts pending approval.";
+  const listHeading = isActiveTab
+    ? "Active sequence"
+    : isSentTab
+      ? "Sent history"
+      : "Pending targets";
+  const editorHeading = isActiveTab
+    ? "Sequence status"
+    : isSentTab
+      ? "Sent copy"
+      : "Draft editor";
+  const emptyListCopy = isActiveTab
+    ? "No leads in the active sequence."
+    : isSentTab
+      ? "No sent campaigns yet."
+      : "No drafts pending approval.";
 
   return (
     <section className={`flex flex-col ${embedded ? "" : "min-h-[60vh]"}`}>
@@ -268,6 +292,11 @@ export function WorkspaceOutboundQueue({
 
       <div className={`flex flex-wrap gap-2 ${embedded ? "" : "mt-6"}`}>
         <QueueTabButton
+          active={activeTab === "active"}
+          label="In Sequence"
+          onClick={() => setActiveTab("active")}
+        />
+        <QueueTabButton
           active={activeTab === "pending"}
           label="Pending Approval"
           onClick={() => setActiveTab("pending")}
@@ -287,7 +316,10 @@ export function WorkspaceOutboundQueue({
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-4">
-          <h2 className="mb-4 text-sm font-medium text-gray-700">{listHeading}</h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-gray-700">{listHeading}</h2>
+            {onAddLead ? <AddLeadTrigger onClick={onAddLead} /> : null}
+          </div>
 
           <div className="flex max-h-[600px] flex-col rounded-lg border border-gray-200 bg-white">
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
@@ -299,7 +331,8 @@ export function WorkspaceOutboundQueue({
               paginatedQueue.map((lead) => {
                 const isSelected = selectedLead?.id === lead.id;
                 const name = lead.prospect_name?.trim() || "Unknown Prospect";
-                const company = lead.target_company?.trim() || "—";
+                const company =
+                  lead.company?.trim() || lead.target_company?.trim() || "—";
                 const sentLabel = formatSentLabel(lead.sent_at, lead.created_at);
 
                 return (
@@ -324,6 +357,10 @@ export function WorkspaceOutboundQueue({
                           strokeWidth={2.5}
                           aria-hidden
                         />
+                      ) : isActiveTab ? (
+                        <span className="shrink-0 rounded-full bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700">
+                          Active
+                        </span>
                       ) : (
                         <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
                           Pending
@@ -332,6 +369,13 @@ export function WorkspaceOutboundQueue({
                     </div>
                     {isSentTab ? (
                       <p className="mt-2 text-xs text-gray-500">Sent on {sentLabel}</p>
+                    ) : isActiveTab ? (
+                      <p className="mt-2 text-xs text-gray-500">
+                        Step {lead.current_sequence_step ?? 1}
+                        {lead.next_send_date
+                          ? ` · Next ${formatSentLabel(lead.next_send_date)}`
+                          : ""}
+                      </p>
                     ) : null}
                   </button>
                 );
@@ -373,8 +417,34 @@ export function WorkspaceOutboundQueue({
           {!selectedLead ? (
             <div className="flex h-96 items-center justify-center rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
               <p className="text-sm text-gray-500">
-                Select a target to review their outreach draft.
+                {isActiveTab
+                  ? "Select a lead to view sequence placement."
+                  : "Select a target to review their outreach draft."}
               </p>
+            </div>
+          ) : isActiveTab ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-4 shadow-sm">
+                <p className="text-sm font-medium text-gray-900">
+                  {selectedLead.prospect_name?.trim() || "Unknown Prospect"}
+                </p>
+                <p className="mt-1 text-sm text-gray-600">{selectedLead.email ?? "—"}</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  {selectedLead.company?.trim() ||
+                    selectedLead.target_company?.trim() ||
+                    "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-4 text-sm text-violet-900 shadow-sm">
+                <p>
+                  Sequence step {selectedLead.current_sequence_step ?? 1} · queue active
+                </p>
+                {selectedLead.next_send_date ? (
+                  <p className="mt-2 text-violet-800/80">
+                    Next send {formatSentLabel(selectedLead.next_send_date)}
+                  </p>
+                ) : null}
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
