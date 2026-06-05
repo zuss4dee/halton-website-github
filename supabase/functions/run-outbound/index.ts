@@ -1,16 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  formatMissingVaultKeyError,
+  resolveVaultKeys,
+  type VaultKeys,
+} from "../_shared/vaultKeys.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-workflow-type",
-};
-
-type VaultKeys = {
-  apollo_api_key: string | null;
-  deepseek_api_key: string;
-  resend_api_key: string;
 };
 
 type FlowNode = {
@@ -736,31 +735,13 @@ serve(async (req) => {
     console.log("Incoming clientId received by function:", clientId);
     console.log("DAG nodes:", nodes?.length ?? 0, "edges:", edges?.length ?? 0);
 
-    const { data: clientData, error: clientError } = await supabaseAdmin
-      .from("clients")
-      .select("apollo_api_key, deepseek_api_key, resend_api_key")
-      .eq("id", clientId)
-      .single();
+    const { keys, sources } = await resolveVaultKeys(supabaseAdmin, clientId);
 
-    if (clientError) {
-      console.error("Supabase DB Query Error Details:", JSON.stringify(clientError, null, 2));
-      return new Response(
-        JSON.stringify({
-          error: "Failed to load client vault keys",
-          details: clientError.message,
-          code: clientError.code,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-      );
-    }
-
-    console.log("Successfully retrieved keys for client:", clientId);
-
-    const keys = clientData as VaultKeys;
+    console.log("Resolved vault keys for client:", clientId, sources);
 
     if (sendApproved) {
-      if (!clientData?.resend_api_key) {
-        throw new Error("Missing required vault key (resend_api_key) for send_approved");
+      if (!keys.resend_api_key) {
+        throw new Error(formatMissingVaultKeyError("resend_api_key"));
       }
 
       const leadId = body.leadId as string | undefined;
@@ -819,11 +800,11 @@ serve(async (req) => {
       );
     }
 
-    if (!clientData?.deepseek_api_key) {
-      throw new Error("Missing required vault key (deepseek_api_key)");
+    if (!keys.deepseek_api_key) {
+      throw new Error(formatMissingVaultKeyError("deepseek_api_key"));
     }
 
-    if (!clientData?.resend_api_key) {
+    if (!keys.resend_api_key) {
       console.warn(
         "[run-outbound] resend_api_key missing; generation still runs but cannot send until approve.",
       );
