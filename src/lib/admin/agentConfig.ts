@@ -54,6 +54,12 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     scopes: ["ceo"],
   },
   {
+    id: "log_operational_observation",
+    label: "Log Operational Observation",
+    description: "Persist learned lessons to agent memory for self-evolution.",
+    scopes: ["ceo"],
+  },
+  {
     id: "web_search",
     label: "Web Search",
     description: "Scrape target URLs via Firecrawl for research tasks.",
@@ -238,6 +244,7 @@ const CEO_SKILL_TOOL_MAP: Record<string, string> = {
   hire_sub_agent: "hireSubAgent",
   trigger_outbound_campaign: "triggerOutboundCampaign",
   configure_automated_sequence: "configureAutomatedSequence",
+  log_operational_observation: "logOperationalObservation",
 };
 
 export type ResolvedAgentRow = {

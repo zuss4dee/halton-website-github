@@ -17,6 +17,11 @@ import {
   type KnowledgeCategory,
   type VaultSaveCategory,
 } from "@/lib/admin/clientKnowledge";
+import {
+  fetchOperationalMemory,
+  formatOperationalMemorySection,
+  logOperationalObservation as persistOperationalObservation,
+} from "@/lib/admin/agentMemory";
 import { upsertCampaignSequencesServer } from "@/lib/admin/campaignSequencesRepository";
 import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig";
 import { buildCronAuthHeaders, getCronSecret } from "@/lib/cron/cronAuth";
@@ -849,6 +854,58 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         return message;
       },
     }),
+    logOperationalObservation: tool({
+      description:
+        "Saves a learned operational lesson to agent memory after mission success or failure. Use to self-evolve: record what worked, what failed, and the actionable strategy to apply next time.",
+      inputSchema: z.object({
+        summary: z.string().describe("Brief description of the task or mission observed."),
+        outcome: z
+          .enum(["SUCCESS", "FAILURE"])
+          .describe("Whether the observed mission succeeded or failed."),
+        strategy: z
+          .string()
+          .describe("Actionable lesson to apply on future similar missions."),
+        scope: z
+          .enum(["LOCAL", "GLOBAL"])
+          .optional()
+          .describe(
+            "LOCAL (default) saves to this workspace; GLOBAL shares the lesson agency-wide.",
+          ),
+      }),
+      execute: async ({ summary, outcome, strategy, scope }) => {
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "LOG_OPERATIONAL_OBSERVATION",
+          summary,
+          outcome,
+          scope: scope ?? "LOCAL",
+        });
+
+        const result = await persistOperationalObservation(clientId, {
+          summary,
+          outcome,
+          strategy,
+          scope: scope === "GLOBAL" ? "GLOBAL" : "LOCAL",
+        });
+
+        if (!result.ok) {
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "LOG_OPERATIONAL_OBSERVATION",
+            message: result.error,
+          });
+          return result.error;
+        }
+
+        const message = `Operational lesson saved (${scope ?? "LOCAL"}, ${outcome}).`;
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          action: "LOG_OPERATIONAL_OBSERVATION",
+          memoryId: result.id,
+        });
+
+        return message;
+      },
+    }),
     triggerOutboundCampaign: tool({
       description:
         "Launches the automated outbound sequence for this workspace by triggering the outbound processing cron. Use once the team is hired and the human operator has configured the pipeline.",
@@ -953,14 +1010,18 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
     ...enabledCeoTools,
     hireSubAgent: tools.hireSubAgent,
     configureAutomatedSequence: tools.configureAutomatedSequence,
+    logOperationalObservation: tools.logOperationalObservation,
     triggerOutboundCampaign: tools.triggerOutboundCampaign,
   };
 
   const { systemPrompt: ceoSystemPrompt } = await fetchWorkspaceCeoSystemPrompt(clientId);
+  const memoryResult = await fetchOperationalMemory(clientId);
+  const operationalMemorySection = formatOperationalMemorySection(memoryResult.rows);
 
   const response = await generateText({
     model: deepseek("deepseek-chat"),
     system: buildCeoLlmSystemMessage(ceoSystemPrompt, {
+      operationalMemorySection,
       rosterText,
       clientContext,
       knowledgeVaultDirective,
