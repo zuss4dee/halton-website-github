@@ -57,17 +57,26 @@ async function loadClientSendingConfig(
   return config;
 }
 
-export async function processOutboundQueue() {
+export async function processOutboundQueue(options?: { clientId?: string }) {
   const now = new Date().toISOString();
-  const { data: leads, error: leadsError } = await getCronSupabase()
+  const scopedClientId = options?.clientId?.trim();
+
+  let leadsQuery = getCronSupabase()
     .from("leads")
     .select("*")
     .eq("queue_status", "active")
-    .lte("next_send_date", now)
-    .limit(100);
+    .lte("next_send_date", now);
+
+  if (scopedClientId) {
+    leadsQuery = leadsQuery.eq("client_id", scopedClientId);
+  }
+
+  const { data: leads, error: leadsError } = await leadsQuery.limit(100);
 
   if (leadsError) throw leadsError;
-  if (!leads || leads.length === 0) return { processed: 0 };
+  if (!leads || leads.length === 0) {
+    return { processed: 0, ...(scopedClientId ? { clientId: scopedClientId } : {}) };
+  }
 
   const clientConfigCache = new Map<string, ClientSendingConfig | null>();
   let processedCount = 0;
@@ -166,5 +175,8 @@ export async function processOutboundQueue() {
       console.error(`Error processing lead ${lead.id}:`, innerError);
     }
   }
-  return { processed: processedCount };
+  return {
+    processed: processedCount,
+    ...(scopedClientId ? { clientId: scopedClientId } : {}),
+  };
 }

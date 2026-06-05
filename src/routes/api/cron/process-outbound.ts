@@ -10,7 +10,8 @@ export async function GET({ request }: { request: Request }) {
     });
   }
   try {
-    const result = await processOutboundQueue();
+    const clientId = new URL(request.url).searchParams.get("clientId")?.trim() || undefined;
+    const result = await processOutboundQueue(clientId ? { clientId } : undefined);
     return new Response(JSON.stringify({ success: true, ...result }), {
       status: 200,
       headers: { "Content-Type": "application/json" },

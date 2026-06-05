@@ -254,6 +254,29 @@ export async function resolveAgentForWorkspace(
     return { agent: null, error: "Agent role is required." };
   }
 
+  if (normalized === "CEO" && workspaceClientId) {
+    const { data: ceo, error: ceoError } = await supabase
+      .from("agents")
+      .select("*")
+      .eq("role", "CEO")
+      .eq("client_id", workspaceClientId)
+      .maybeSingle();
+
+    if (ceoError) {
+      return { agent: null, error: ceoError.message };
+    }
+
+    if (!ceo) {
+      return { agent: null, error: "No workspace CEO provisioned." };
+    }
+
+    if (ceo.is_active === false) {
+      return { agent: null, error: "CEO is inactive in this workspace." };
+    }
+
+    return { agent: ceo as ResolvedAgentRow };
+  }
+
   if (workspaceClientId) {
     const { data: scoped, error: scopedError } = await supabase
       .from("agents")

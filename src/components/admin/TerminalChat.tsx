@@ -202,7 +202,9 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
 
     void resolveAgentForWorkspace("CEO", clientId).then((result) => {
       if (cancelled) return;
-      setCeoAgent(result.agent);
+      const workspaceCeo =
+        result.agent?.client_id === clientId ? result.agent : null;
+      setCeoAgent(workspaceCeo);
       setCeoLoading(false);
     });
 

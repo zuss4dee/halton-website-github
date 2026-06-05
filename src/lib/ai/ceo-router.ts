@@ -18,7 +18,10 @@ import {
   type VaultSaveCategory,
 } from "@/lib/admin/clientKnowledge";
 import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig";
-import { resolveAgentForWorkspaceServer } from "@/lib/admin/provisionWorkspaceCeo";
+import {
+  fetchWorkspaceCeoAgent,
+  resolveAgentForWorkspaceServer,
+} from "@/lib/admin/provisionWorkspaceCeo";
 import { getSupabaseServer } from "@/lib/supabase-server";
 import { getEffectiveToolBindings } from "@/lib/admin/agentStudio";
 import { formatReplyContextForCeo, type TerminalReplyContext } from "@/lib/admin/terminalReply";
@@ -94,9 +97,9 @@ export async function executeCEOCommand(
   const executionId = crypto.randomUUID();
   const supabase = getSupabaseServer();
 
-  const ceoResolved = await resolveAgentForWorkspaceServer("CEO", clientId);
+  const ceoResolved = await fetchWorkspaceCeoAgent(clientId);
   if (!ceoResolved.agent) {
-    throw new Error(ceoResolved.error ?? "CRITICAL: CEO Agent offline.");
+    throw new Error(ceoResolved.error ?? "CRITICAL: Workspace CEO not provisioned.");
   }
 
   const ceo = ceoResolved.agent;
@@ -104,7 +107,8 @@ export async function executeCEOCommand(
   const { data: rosterData, error: rosterError } = await supabase
     .from("agents")
     .select("role, system_prompt")
-    .or(`client_id.eq.${clientId},client_id.is.null`);
+    .eq("client_id", clientId)
+    .neq("role", "CEO");
 
   if (rosterError || !rosterData) {
     throw new Error("CRITICAL: Could not load agent roster.");
@@ -730,6 +734,9 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
       }),
       execute: async ({ role, instructions, name, model }) => {
         const normalizedRole = role.trim().toUpperCase().replace(/\s+/g, "_");
+        if (normalizedRole === "CEO") {
+          return "BLOCKED: CEO is provisioned once per workspace and cannot be hired as a sub-agent.";
+        }
         const agentName = name?.trim() || normalizedRole.replace(/_/g, " ");
         const agentModel = model?.trim() || "deepseek-chat";
 
@@ -799,7 +806,9 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         });
 
         const baseUrl = resolveCronBaseUrl();
-        const response = await fetch(`${baseUrl}/api/cron/process-outbound`, {
+        const cronUrl = new URL(`${baseUrl}/api/cron/process-outbound`);
+        cronUrl.searchParams.set("clientId", clientId);
+        const response = await fetch(cronUrl.toString(), {
           method: "GET",
           headers: {
             "x-cron-secret": cronSecret,

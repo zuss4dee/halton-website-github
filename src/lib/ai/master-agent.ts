@@ -204,7 +204,7 @@ export async function executeMasterCommand(prompt: string): Promise<MasterComman
       };
     }
 
-    const ceoProvision = await provisionWorkspaceCeoAgent(data.id);
+    const ceoProvision = await provisionWorkspaceCeoAgent(data.id, supabase);
     if (!ceoProvision.ok) {
       await supabase.from("clients").delete().eq("id", data.id);
       console.error("❌ CREATE_CLIENT CEO PROVISION ERROR:", ceoProvision.error);

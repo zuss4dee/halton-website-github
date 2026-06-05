@@ -6,6 +6,40 @@ import { createSupabaseServer } from "@/lib/supabase-server";
 export const WORKSPACE_CEO_SYSTEM_PROMPT =
   "You are the autonomous AI CEO of this workspace. Your first operational duty, once the human operator has configured the client's pipeline, is to review the client's data and use the hireSubAgent tool to dynamically build a tailored team of sub-agents. Once the team is hired and you receive the command, use the triggerOutboundCampaign tool to launch the automated sequence.";
 
+/** Workspace-bound CEO only — never falls back to a global template. */
+export async function fetchWorkspaceCeoAgent(
+  workspaceId: string,
+  admin?: SupabaseClient,
+): Promise<{ agent: ResolvedAgentRow | null; error?: string }> {
+  const supabase = admin ?? createSupabaseServer();
+  const scopedWorkspaceId = workspaceId.trim();
+
+  if (!scopedWorkspaceId) {
+    return { agent: null, error: "workspaceId is required." };
+  }
+
+  const { data, error } = await supabase
+    .from("agents")
+    .select("*")
+    .eq("role", "CEO")
+    .eq("client_id", scopedWorkspaceId)
+    .maybeSingle();
+
+  if (error) {
+    return { agent: null, error: error.message };
+  }
+
+  if (!data) {
+    return { agent: null, error: "No workspace CEO provisioned." };
+  }
+
+  if (data.is_active === false) {
+    return { agent: null, error: "CEO is inactive in this workspace." };
+  }
+
+  return { agent: data as ResolvedAgentRow };
+}
+
 export async function resolveAgentForWorkspaceServer(
   role: string,
   clientId: string,
@@ -17,6 +51,10 @@ export async function resolveAgentForWorkspaceServer(
 
   if (!normalized) {
     return { agent: null, error: "Agent role is required." };
+  }
+
+  if (normalized === "CEO") {
+    return fetchWorkspaceCeoAgent(workspaceClientId, supabase);
   }
 
   if (workspaceClientId) {
