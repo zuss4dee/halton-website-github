@@ -1,8 +1,6 @@
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 
-import { supabase } from "@/lib/supabase";
-
 import type { ClientRow } from "@/lib/admin/clientsRepository";
 
 import {
@@ -19,16 +17,11 @@ import {
   type KnowledgeCategory,
   type VaultSaveCategory,
 } from "@/lib/admin/clientKnowledge";
-import {
-  filterCeoTools,
-  getDefaultSkillsForRole,
-  resolveAgentForWorkspace,
-} from "@/lib/admin/agentConfig";
+import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig";
+import { resolveAgentForWorkspaceServer } from "@/lib/admin/provisionWorkspaceCeo";
+import { getSupabaseServer } from "@/lib/supabase-server";
 import { getEffectiveToolBindings } from "@/lib/admin/agentStudio";
-import {
-  formatReplyContextForCeo,
-  type TerminalReplyContext,
-} from "@/lib/admin/terminalReply";
+import { formatReplyContextForCeo, type TerminalReplyContext } from "@/lib/admin/terminalReply";
 
 import { deepseek } from "./providers";
 import { executeSubAgent } from "./sub-agent-router";
@@ -57,6 +50,14 @@ function summarizePrompt(systemPrompt: string): string {
   return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
 }
 
+function resolveCronBaseUrl(): string {
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  const port = process.env.PORT ?? "3000";
+  return `http://localhost:${port}`;
+}
+
 function logInsert(
   executionId: string,
   clientId: string,
@@ -64,7 +65,7 @@ function logInsert(
   eventType: string,
   payload: Record<string, unknown>,
 ) {
-  return supabase.from("agent_logs").insert({
+  return getSupabaseServer().from("agent_logs").insert({
     execution_id: executionId,
     client_id: clientId,
     agent_id: agentId,
@@ -84,29 +85,26 @@ export async function executeCEOCommand(
     throw new Error("Command cannot be empty.");
   }
 
-  const prompt = replyContext
-    ? formatReplyContextForCeo(trimmed, replyContext)
-    : trimmed;
+  const prompt = replyContext ? formatReplyContextForCeo(trimmed, replyContext) : trimmed;
 
   if (!clientId.trim()) {
     throw new Error("clientId is required.");
   }
 
   const executionId = crypto.randomUUID();
+  const supabase = getSupabaseServer();
 
-  const { data: ceo, error } = await supabase
-    .from("agents")
-    .select("*")
-    .eq("role", "CEO")
-    .single();
-
-  if (error || !ceo) {
-    throw new Error("CRITICAL: CEO Agent offline.");
+  const ceoResolved = await resolveAgentForWorkspaceServer("CEO", clientId);
+  if (!ceoResolved.agent) {
+    throw new Error(ceoResolved.error ?? "CRITICAL: CEO Agent offline.");
   }
+
+  const ceo = ceoResolved.agent;
 
   const { data: rosterData, error: rosterError } = await supabase
     .from("agents")
-    .select("role, system_prompt");
+    .select("role, system_prompt")
+    .or(`client_id.eq.${clientId},client_id.is.null`);
 
   if (rosterError || !rosterData) {
     throw new Error("CRITICAL: Could not load agent roster.");
@@ -141,12 +139,7 @@ CRITICAL INSTRUCTION: You are operating strictly on behalf of this client. Base 
   );
   const rosterText =
     roster.length > 0
-      ? roster
-          .map(
-            (agent) =>
-              `- ${agent.role}: ${summarizePrompt(agent.system_prompt)}`,
-          )
-          .join("\n")
+      ? roster.map((agent) => `- ${agent.role}: ${summarizePrompt(agent.system_prompt)}`).join("\n")
       : "- No specialized sub-agents currently registered.";
   const rosterRoles = roster.map((agent) => agent.role).filter(Boolean);
 
@@ -181,15 +174,12 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
 
   const tools = {
     spawn_sub_agent: tool({
-      description:
-        `Delegate a focused task to a specialist sub-agent. When delegating, use the exact Role name from the live roster: ${rosterRoles.length > 0 ? rosterRoles.join(", ") : "No roles available yet"}.`,
+      description: `Delegate a focused task to a specialist sub-agent. When delegating, use the exact Role name from the live roster: ${rosterRoles.length > 0 ? rosterRoles.join(", ") : "No roles available yet"}.`,
       inputSchema: z.object({
         targetAgentRole: z
           .string()
           .describe("Exact role name from the live roster (e.g., RESEARCHER)."),
-        specificTask: z
-          .string()
-          .describe("The exact instruction for the sub-agent."),
+        specificTask: z.string().describe("The exact instruction for the sub-agent."),
       }),
       execute: async ({ targetAgentRole, specificTask }) => {
         const normalizedTarget = targetAgentRole.trim().toUpperCase();
@@ -214,7 +204,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           task: specificTask,
         });
 
-        const targetResolved = await resolveAgentForWorkspace(targetAgentRole, clientId);
+        const targetResolved = await resolveAgentForWorkspaceServer(targetAgentRole, clientId);
         if (!targetResolved.agent) {
           return targetResolved.error ?? `CRITICAL: ${targetAgentRole} Agent offline.`;
         }
@@ -289,9 +279,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         "Processes raw text, notes, or instructions from the admin, categorizes the information, and saves it into the client's knowledge vault. Use this when the admin pastes information about a client's past results, offers, or brand tone. When the admin provides messy text, extract concrete facts, rewrite them into a clean professional format (for case studies use Challenge / Solution / Result structure), assign the correct category, then save.",
       inputSchema: z.object({
         clientId: z.string().describe("Client UUID or slug."),
-        title: z
-          .string()
-          .describe("Clean, descriptive title for this knowledge asset."),
+        title: z.string().describe("Clean, descriptive title for this knowledge asset."),
         content: z
           .string()
           .describe(
@@ -299,9 +287,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           ),
         category: z
           .enum(VAULT_SAVE_CATEGORIES)
-          .describe(
-            "Strictly one of: case_study, core_offer, brand_voice, or general.",
-          ),
+          .describe("Strictly one of: case_study, core_offer, brand_voice, or general."),
       }),
       execute: async ({ clientId: incomingClientId, title, content, category }) => {
         const resolved = await resolveClientId(incomingClientId);
@@ -359,9 +345,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
       execute: async ({ clientId: incomingClientId, testEmail }) => {
         let targetClientId = incomingClientId;
         if (
-          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-            targetClientId,
-          )
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetClientId)
         ) {
           const { data: clientData, error: clientError } = await supabase
             .from("clients")
@@ -427,17 +411,14 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           return message;
         }
 
-        const { data: runData, error: runError } = await supabase.functions.invoke(
-          "run-outbound",
-          {
-            body: {
-              clientId: targetClientId,
-              nodes,
-              edges,
-              ...(testEmail ? { testEmail } : {}),
-            },
+        const { data: runData, error: runError } = await supabase.functions.invoke("run-outbound", {
+          body: {
+            clientId: targetClientId,
+            nodes,
+            edges,
+            ...(testEmail ? { testEmail } : {}),
           },
-        );
+        });
 
         if (runError) {
           const message = `Workflow execution failed: ${runError.message}`;
@@ -502,7 +483,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
     }),
     build_and_run_automation: tool({
       description:
-        "ONLY approved path for outbound email generation. Builds a workflow graph, saves the active SOP, and runs run-outbound. REQUIRED FIRST: search_client_knowledge. NEVER use spawn_sub_agent/COPYWRITER to queue emails. STRICT LABELS: every node needs data.label. deepseek_llm -> label exactly \"DeepSeek Writer\". copy_reviewer -> type MUST be copy_reviewer (NOT deepseek_llm) and label exactly \"Deliverability Chief\" (never \"AI Writer\"). 5-step Apollo campaign (node order): (1) trigger, (2) apollo_search, (3) deepseek_llm, (4) copy_reviewer, (5) approval_gate, (6) resend_email optional. 4-step without Apollo: trigger -> deepseek_llm -> copy_reviewer -> approval_gate -> resend_email. STRICT WIRING: copy_reviewer data.draft = {{steps.<writer_id>.copy}}. approval_gate data.body AND resend_email data.body MUST be {{steps.<reviewer_id>.copy}} only — approval_gate writes sanitized copy to the Human Review Queue. Unique ids (writer-1, reviewer-1, gate-1); linear edges.",
+        'ONLY approved path for outbound email generation. Builds a workflow graph, saves the active SOP, and runs run-outbound. REQUIRED FIRST: search_client_knowledge. NEVER use spawn_sub_agent/COPYWRITER to queue emails. STRICT LABELS: every node needs data.label. deepseek_llm -> label exactly "DeepSeek Writer". copy_reviewer -> type MUST be copy_reviewer (NOT deepseek_llm) and label exactly "Deliverability Chief" (never "AI Writer"). 5-step Apollo campaign (node order): (1) trigger, (2) apollo_search, (3) deepseek_llm, (4) copy_reviewer, (5) approval_gate, (6) resend_email optional. 4-step without Apollo: trigger -> deepseek_llm -> copy_reviewer -> approval_gate -> resend_email. STRICT WIRING: copy_reviewer data.draft = {{steps.<writer_id>.copy}}. approval_gate data.body AND resend_email data.body MUST be {{steps.<reviewer_id>.copy}} only — approval_gate writes sanitized copy to the Human Review Queue. Unique ids (writer-1, reviewer-1, gate-1); linear edges.',
       inputSchema: z.object({
         clientId: z.string(),
         workflowName: z.string(),
@@ -521,7 +502,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
             data: z
               .record(z.string(), z.unknown())
               .describe(
-                "Required. Must include label on every node. deepseek_llm label: \"DeepSeek Writer\". copy_reviewer label: \"Deliverability Chief\". Include prompt, draft, or body per type.",
+                'Required. Must include label on every node. deepseek_llm label: "DeepSeek Writer". copy_reviewer label: "Deliverability Chief". Include prompt, draft, or body per type.',
               )
               .optional(),
           }),
@@ -534,18 +515,10 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           }),
         ),
       }),
-      execute: async ({
-        clientId: incomingClientId,
-        workflowName,
-        testEmail,
-        nodes,
-        edges,
-      }) => {
+      execute: async ({ clientId: incomingClientId, workflowName, testEmail, nodes, edges }) => {
         let targetClientId = incomingClientId;
         if (
-          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-            targetClientId,
-          )
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetClientId)
         ) {
           const { data: clientData, error: clientError } = await supabase
             .from("clients")
@@ -624,17 +597,14 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           return message;
         }
 
-        const { data: runData, error: runError } = await supabase.functions.invoke(
-          "run-outbound",
-          {
-            body: {
-              clientId: targetClientId,
-              nodes: laidOutNodes,
-              edges,
-              testEmail: testEmail.trim(),
-            },
+        const { data: runData, error: runError } = await supabase.functions.invoke("run-outbound", {
+          body: {
+            clientId: targetClientId,
+            nodes: laidOutNodes,
+            edges,
+            testEmail: testEmail.trim(),
           },
-        );
+        });
 
         if (runError) {
           const message = `Workflow execution failed: ${runError.message}`;
@@ -704,15 +674,15 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         const emailSummary =
           resendEntries.length > 0
             ? resendEntries
-                .map((entry) => `- ${entry.nodeId}: emailed ${entry.to} | subject: ${entry.subject}`)
+                .map(
+                  (entry) => `- ${entry.nodeId}: emailed ${entry.to} | subject: ${entry.subject}`,
+                )
                 .join("\n")
             : "- No resend_email output found.";
 
         const copySummary =
           llmEntries.length > 0
-            ? llmEntries
-                .map((entry) => `- ${entry.nodeId}: ${entry.copy}`)
-                .join("\n")
+            ? llmEntries.map((entry) => `- ${entry.nodeId}: ${entry.copy}`).join("\n")
             : "- No deepseek_llm copy output found.";
 
         const summaryText = [
@@ -743,36 +713,42 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         return summaryText;
       },
     }),
-    create_sub_agent: tool({
+    hireSubAgent: tool({
       description:
-        "Spawns a new specialized AI sub-agent, writes its system prompt, and saves it to the database. Use this when the admin asks you to create a new agent, hire a new role, or build a new capability (e.g., 'Create a LinkedIn Outreach Agent'). Write a highly detailed, expert-level system_prompt that defines the agent's persona, exact rules of operation, and output format. If role is DELIVERABILITY_CHIEF, the saved prompt is automatically merged with draconian fatal constraints (body-only output, max 3 sentences, sign as Damilare, no name hallucination).",
+        "Hires a new specialized AI sub-agent for this workspace. Use after reviewing client data to dynamically build a tailored team. Provide detailed instructions that become the agent's system prompt. If role is DELIVERABILITY_CHIEF, the saved prompt is automatically merged with draconian fatal constraints (body-only output, max 3 sentences, sign as Damilare, no name hallucination).",
       inputSchema: z.object({
-        name: z.string(),
         role: z
           .string()
           .describe("UPPERCASE role slug with no spaces (e.g., LINKEDIN_SPECIALIST)."),
-        model: z.string().default("deepseek-chat"),
-        system_prompt: z.string(),
+        instructions: z
+          .string()
+          .describe(
+            "Expert-level system prompt defining the agent's persona, rules of operation, and output format.",
+          ),
+        name: z.string().optional(),
+        model: z.string().optional(),
       }),
-      execute: async ({ name, role, model, system_prompt }) => {
+      execute: async ({ role, instructions, name, model }) => {
         const normalizedRole = role.trim().toUpperCase().replace(/\s+/g, "_");
+        const agentName = name?.trim() || normalizedRole.replace(/_/g, " ");
+        const agentModel = model?.trim() || "deepseek-chat";
 
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
-          action: "CREATE_SUB_AGENT",
-          name,
+          action: "HIRE_SUB_AGENT",
+          name: agentName,
           role: normalizedRole,
-          model,
+          model: agentModel,
         });
 
         const resolvedSystemPrompt =
           normalizedRole === DELIVERABILITY_CHIEF_ROLE
-            ? buildDeliverabilityChiefSystemPrompt(system_prompt)
-            : system_prompt;
+            ? buildDeliverabilityChiefSystemPrompt(instructions)
+            : instructions;
 
         const { error: insertError } = await supabase.from("agents").insert({
-          name,
+          name: agentName,
           role: normalizedRole,
-          model,
+          model: agentModel,
           system_prompt: resolvedSystemPrompt,
           client_id: clientId,
           skills: getDefaultSkillsForRole(normalizedRole),
@@ -781,24 +757,78 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         });
 
         if (insertError) {
-          const message = `Failed to create sub-agent: ${insertError.message}`;
+          const message = `Failed to hire sub-agent: ${insertError.message}`;
           await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
             status: "ERROR",
-            action: "CREATE_SUB_AGENT",
+            action: "HIRE_SUB_AGENT",
             message,
           });
           return message;
         }
 
-        const message = `Successfully hired ${name} (${normalizedRole}). They are now available for delegation.`;
+        const message = `Successfully hired ${agentName} (${normalizedRole}). They are now available for delegation.`;
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
           status: "SUCCESS",
-          action: "CREATE_SUB_AGENT",
-          name,
+          action: "HIRE_SUB_AGENT",
+          name: agentName,
           role: normalizedRole,
         });
 
         return message;
+      },
+    }),
+    triggerOutboundCampaign: tool({
+      description:
+        "Launches the automated outbound sequence for this workspace by triggering the outbound processing cron. Use once the team is hired and the human operator has configured the pipeline.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const cronSecret = process.env.CRON_SECRET;
+        if (!cronSecret) {
+          const message = "CRON_SECRET is not configured; cannot trigger outbound campaign.";
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "TRIGGER_OUTBOUND_CAMPAIGN",
+            message,
+          });
+          return message;
+        }
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "TRIGGER_OUTBOUND_CAMPAIGN",
+          clientId,
+        });
+
+        const baseUrl = resolveCronBaseUrl();
+        const response = await fetch(`${baseUrl}/api/cron/process-outbound`, {
+          method: "GET",
+          headers: {
+            "x-cron-secret": cronSecret,
+            Authorization: `Bearer ${cronSecret}`,
+          },
+        });
+
+        const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+
+        if (!response.ok) {
+          const message =
+            typeof body?.error === "string"
+              ? body.error
+              : `Outbound cron failed (${response.status}).`;
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "TRIGGER_OUTBOUND_CAMPAIGN",
+            message,
+          });
+          return message;
+        }
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          action: "TRIGGER_OUTBOUND_CAMPAIGN",
+          result: body,
+        });
+
+        return body ?? { success: true };
       },
     }),
   };
@@ -807,14 +837,15 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
   const enabledCeoTools = filterCeoTools(tools, ceoSkills);
   const ceoTools = {
     ...enabledCeoTools,
-    create_sub_agent: tools.create_sub_agent,
+    hireSubAgent: tools.hireSubAgent,
+    triggerOutboundCampaign: tools.triggerOutboundCampaign,
   };
 
   const response = await generateText({
     model: deepseek("deepseek-chat"),
     system: `${ceoAgent.system_prompt}
 
-You are the Halton Works CEO. Here is your current roster of specialized sub-agents you can delegate to:
+Here is your current roster of specialized sub-agents you can delegate to:
 ${rosterText}
 
 When delegating, use the exact Role name.

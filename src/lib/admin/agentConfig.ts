@@ -36,6 +36,18 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     scopes: ["ceo"],
   },
   {
+    id: "hire_sub_agent",
+    label: "Hire Sub-Agents",
+    description: "Dynamically create specialized sub-agents for the workspace.",
+    scopes: ["ceo"],
+  },
+  {
+    id: "trigger_outbound_campaign",
+    label: "Trigger Outbound Campaign",
+    description: "Launch the automated outbound sequence via cron.",
+    scopes: ["ceo"],
+  },
+  {
     id: "web_search",
     label: "Web Search",
     description: "Scrape target URLs via Firecrawl for research tasks.",
@@ -79,10 +91,7 @@ export function getDefaultSkillsForRole(role: string | null | undefined): string
   return [...SUB_AGENT_DEFAULT_SKILLS];
 }
 
-export function normalizeSkills(
-  raw: unknown,
-  role: string | null | undefined,
-): string[] {
+export function normalizeSkills(raw: unknown, role: string | null | undefined): string[] {
   const allowed = new Set(getSkillsForAgentPanel(role).map((skill) => skill.id));
   const defaults = getDefaultSkillsForRole(role);
 
@@ -111,9 +120,7 @@ export function agentToConfigDraft(agent: AgentRosterRow): AgentConfigDraft {
   };
 }
 
-export type SaveAgentConfigResult =
-  | { ok: true; agentId: string }
-  | { ok: false; error: string };
+export type SaveAgentConfigResult = { ok: true; agentId: string } | { ok: false; error: string };
 
 export async function saveAgentConfiguration(
   clientId: string,
@@ -221,6 +228,8 @@ const CEO_SKILL_TOOL_MAP: Record<string, string> = {
   read_knowledge_vault: "search_client_knowledge",
   write_knowledge_vault: "save_to_knowledge_vault",
   build_automation: "build_and_run_automation",
+  hire_sub_agent: "hireSubAgent",
+  trigger_outbound_campaign: "triggerOutboundCampaign",
 };
 
 export type ResolvedAgentRow = {

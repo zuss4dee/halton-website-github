@@ -2,6 +2,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 import { companyToSlug } from "@/lib/admin-workspaces";
+import { provisionWorkspaceCeoAgent } from "@/lib/admin/provisionWorkspaceCeo";
 import { supabase } from "@/lib/supabase";
 
 import { deepseek } from "./providers";
@@ -203,6 +204,18 @@ export async function executeMasterCommand(prompt: string): Promise<MasterComman
       };
     }
 
+    const ceoProvision = await provisionWorkspaceCeoAgent(data.id);
+    if (!ceoProvision.ok) {
+      await supabase.from("clients").delete().eq("id", data.id);
+      console.error("❌ CREATE_CLIENT CEO PROVISION ERROR:", ceoProvision.error);
+      return {
+        success: false,
+        intent: "CREATE_CLIENT",
+        message: ceoProvision.error,
+        data: object,
+      };
+    }
+
     console.log("✅ CLIENT CREATED:", data.id, data.slug);
 
     return {
@@ -256,10 +269,8 @@ export async function executeMasterCommand(prompt: string): Promise<MasterComman
 
     console.log("✅ LEADS SUCCESSFULLY INJECTED");
 
-    const resolvedSlug =
-      client.slug?.trim() ?? normalizeClientSlug(targetClientSlug);
-    const workspaceName =
-      client.company_name?.trim() ?? slugToCompanyName(targetClientSlug);
+    const resolvedSlug = client.slug?.trim() ?? normalizeClientSlug(targetClientSlug);
+    const workspaceName = client.company_name?.trim() ?? slugToCompanyName(targetClientSlug);
 
     return {
       success: true,

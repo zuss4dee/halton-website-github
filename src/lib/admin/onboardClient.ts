@@ -1,5 +1,6 @@
 import { companyToSlug } from "@/lib/admin-workspaces";
 import type { ClientOnboardInput } from "@/lib/admin/clientsRepository";
+import { provisionWorkspaceCeoAgent } from "@/lib/admin/provisionWorkspaceCeo";
 import { createSupabaseServer } from "@/lib/supabase-server";
 
 export type OnboardClientPayload = ClientOnboardInput & {
@@ -31,9 +32,7 @@ function normalizePayload(payload: OnboardClientPayload) {
   };
 }
 
-export async function onboardClient(
-  payload: OnboardClientPayload,
-): Promise<OnboardClientResult> {
+export async function onboardClient(payload: OnboardClientPayload): Promise<OnboardClientResult> {
   const input = normalizePayload(payload);
 
   if (!input.companyName || !input.primaryContactEmail || !input.sendingDomain) {
@@ -121,6 +120,20 @@ export async function onboardClient(
     return {
       ok: false,
       error: profileError.message,
+      status: 500,
+    };
+  }
+
+  const ceoProvision = await provisionWorkspaceCeoAgent(clientRow.id, admin);
+  if (!ceoProvision.ok) {
+    await admin.from("profiles").delete().eq("id", authUser.id);
+    await admin.from("clients").delete().eq("id", clientRow.id);
+    if (createdUserId) {
+      await admin.auth.admin.deleteUser(createdUserId);
+    }
+    return {
+      ok: false,
+      error: ceoProvision.error,
       status: 500,
     };
   }

@@ -8,6 +8,7 @@ import {
   type TerminalReplyContext,
 } from "@/lib/admin/terminalReply";
 import { dispatchAgentActivity } from "@/lib/admin/agentActivity";
+import { resolveAgentForWorkspace, type ResolvedAgentRow } from "@/lib/admin/agentConfig";
 import { resolveActivityRoleFromLog } from "@/lib/admin/resolveAgentActivityRole";
 import { supabase } from "@/lib/supabase";
 
@@ -42,12 +43,9 @@ function eventBadgeClass(eventType: string): string {
 }
 
 function JsonPre({ value }: { value: unknown }) {
-  const content =
-    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
-  return (
-    <pre className="mt-1 overflow-x-auto bg-gray-900/50 p-2 text-[10px]">{content}</pre>
-  );
+  return <pre className="mt-1 overflow-x-auto bg-gray-900/50 p-2 text-[10px]">{content}</pre>;
 }
 
 function resolveAgentLabel(agentId: string | undefined, agents: AgentRosterRow[]): string {
@@ -185,10 +183,43 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
   const [isExecuting, setIsExecuting] = useState(false);
   const [command, setCommand] = useState("");
   const [replyContext, setReplyContext] = useState<TerminalReplyContext | null>(null);
+  const [ceoAgent, setCeoAgent] = useState<ResolvedAgentRow | null>(null);
+  const [ceoLoading, setCeoLoading] = useState(true);
 
   const telemetryChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!clientId) {
+      setCeoAgent(null);
+      setCeoLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCeoLoading(true);
+
+    void resolveAgentForWorkspace("CEO", clientId).then((result) => {
+      if (cancelled) return;
+      setCeoAgent(result.agent);
+      setCeoLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  useEffect(() => {
+    const fromRoster = agents.find(
+      (agent) => agent.role?.trim().toUpperCase() === "CEO" && agent.client_id === clientId,
+    );
+    if (fromRoster) {
+      setCeoAgent(fromRoster as ResolvedAgentRow);
+      setCeoLoading(false);
+    }
+  }, [agents, clientId]);
 
   useEffect(() => {
     if (!clientId) return;
@@ -246,7 +277,7 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
           table: "agent_logs",
           filter: `execution_id=eq.${executionId}`,
         },
-        (payload) => {
+        (payload: { new: Record<string, unknown> }) => {
           const row = payload.new as AgentLogRow;
           if (row.client_id && row.client_id !== clientId) return;
           emitAgentActivityForLog(row, agents);
@@ -288,9 +319,10 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
 
     const activeReply = replyContext;
     const replyPrefix = activeReply ? buildReplyPrefix(activeReply.agentLabel) : "";
-    const adminReplyBody = activeReply && trimmed.startsWith(replyPrefix)
-      ? trimmed.slice(replyPrefix.length).trim()
-      : trimmed;
+    const adminReplyBody =
+      activeReply && trimmed.startsWith(replyPrefix)
+        ? trimmed.slice(replyPrefix.length).trim()
+        : trimmed;
 
     if (activeReply && !adminReplyBody) {
       return;
@@ -371,7 +403,28 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
   return (
     <>
       <section>
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Mission control</h2>
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold text-gray-900">Mission control</h2>
+          <div className="text-sm text-gray-600">
+            {ceoLoading ? (
+              <span>Loading workspace CEO…</span>
+            ) : ceoAgent ? (
+              <span>
+                <span className="font-medium text-gray-900">
+                  {ceoAgent.name ?? "Workspace CEO"}
+                </span>
+                <span className="text-gray-400"> · {ceoAgent.role}</span>
+                {ceoAgent.is_active === false ? (
+                  <span className="text-amber-600"> · offline</span>
+                ) : (
+                  <span className="text-emerald-600"> · online</span>
+                )}
+              </span>
+            ) : (
+              <span className="text-amber-600">No workspace CEO provisioned</span>
+            )}
+          </div>
+        </div>
         {replyContext ? (
           <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
             Replying to {replyContext.agentLabel} · {replyContext.eventType}
