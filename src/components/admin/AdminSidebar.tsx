@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { GLOBAL_NAV, workspacePath, type WorkspaceNavSegment } from "@/lib/admin/adminNav";
+import { ViewOrgChartButton } from "@/components/workspace/ViewOrgChartButton";
 import { supabase } from "@/lib/supabase";
 
 const UUID_PATTERN =
@@ -15,7 +16,7 @@ const WORKSPACE_SIDEBAR_LINKS: {
   { label: "03 // CAMPAIGN RULES", segment: "workflow" },
   { label: "03a // AUTOMATED_SEQUENCE", segment: "sequence" },
   { label: "03b // COPY_LIBRARY", segment: "templates" },
-  { label: "05 // TENANT SETTINGS", segment: "settings" },
+  { label: "05 // WORKSPACE SETTINGS", segment: "settings" },
   { label: "06 // CREDENTIALS", segment: "credentials" },
 ];
 
@@ -126,13 +127,13 @@ export function AdminSidebar() {
         {isWorkspace && clientId ? (
           <>
             <p className="px-3 py-2 font-mono text-[9px] tracking-[0.2em] text-ink/40 uppercase">
-              Tenant // {clientName ?? clientId.slice(0, 8)}
+              WORKSPACE // {clientName ?? clientId.slice(0, 8)}
             </p>
             <Link
               to="/admin"
               className="mx-3 mb-2 block font-mono text-[9px] tracking-[0.16em] text-ink-soft uppercase hover:text-ink"
             >
-              ← Tenant Index
+              ← ALL CLIENTS
             </Link>
             <SidebarNavRow
               to="/admin/client/$id"
@@ -160,6 +161,11 @@ export function AdminSidebar() {
                 />
               );
             })}
+            <ViewOrgChartButton
+              clientId={clientId}
+              variant="sidebar"
+              label="07 // ORG CHART"
+            />
           </>
         ) : (
           GLOBAL_NAV.map((item) => {

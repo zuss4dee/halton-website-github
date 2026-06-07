@@ -11,11 +11,12 @@ export type AgentRosterRow = {
   skills: unknown;
   is_active: boolean | null;
   client_id: string | null;
+  reports_to_agent_id: string | null;
   created_at: string | null;
 };
 
 const AGENT_SELECT =
-  "id, name, role, model, system_prompt, skills, is_active, client_id, created_at" as const;
+  "id, name, role, model, system_prompt, skills, is_active, client_id, reports_to_agent_id, created_at" as const;
 
 function sortAgents(agents: AgentRosterRow[]) {
   return [...agents].sort((a, b) => {

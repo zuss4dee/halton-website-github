@@ -334,7 +334,7 @@ export function WorkspaceLeadPipeline({ clientId }: WorkspaceLeadPipelineProps) 
         </Link>
         <div className="eyebrow mb-4">Workspace 02 // Lead Pipeline</div>
         <h1 className="font-display text-[clamp(2.5rem,8vw,6rem)] leading-[0.88] tracking-[-0.04em]">
-          LEAD_PIPELINE // TENANT_SCOPED
+          LEAD_PIPELINE // WORKSPACE_SCOPED
         </h1>
         <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
           INGESTION_SOURCE // AI_ORCHESTRATOR_ONLY

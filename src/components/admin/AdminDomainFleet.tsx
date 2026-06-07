@@ -69,7 +69,7 @@ export function AdminDomainFleet() {
       <AdminPageHeader
         code="02 // DOMAIN_FLEET"
         title="Domain Fleet"
-        description="Agency-wide sending infrastructure · Resend DNS × tenant sending_domain"
+        description="Agency-wide sending infrastructure · Resend DNS × client sending_domain"
         trailing={
           <button
             type="button"
@@ -88,7 +88,7 @@ export function AdminDomainFleet() {
           {rows.length > 0 ? (
             <span className="tabular-nums">
               {" "}
-              · {verifiedCount} verified / {rows.length} tenants
+              · {verifiedCount} verified / {rows.length} clients
             </span>
           ) : null}
         </p>
@@ -138,7 +138,7 @@ export function AdminDomainFleet() {
         rows={rows}
         rowKey={(row) => row.id}
         isLoading={isLoading}
-        emptyMessage="No tenants in registry"
+        emptyMessage="No clients in registry"
       />
     </section>
   );

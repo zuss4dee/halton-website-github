@@ -48,9 +48,9 @@ function GlobalLobby({ initialOnboardOpen = false }: GlobalLobbyProps) {
   return (
     <section className="space-y-12">
       <AdminPageHeader
-        code="00 // TENANT_INDEX"
+        code="00 // ALL CLIENTS"
         title="Command Center"
-        description="Tenant index · global telemetry · operational roster"
+        description="Client directory · global telemetry · operational roster"
       />
 
       <section className="grid grid-cols-1 gap-0 md:grid-cols-3">
@@ -124,7 +124,7 @@ function GlobalLobby({ initialOnboardOpen = false }: GlobalLobbyProps) {
               ) : clients.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-ink/40 uppercase">
-                    No tenants.{" "}
+                    No clients.{" "}
                     <button
                       type="button"
                       onClick={() => setIsOnboardOpen(true)}

@@ -31,7 +31,7 @@ export function AdminUnifiedInbox() {
       <AdminPageHeader
         code="01 // UNIFIED_INBOX"
         title="Unified Inbox"
-        description="Cross-tenant reply signals · status replied · all workspaces"
+        description="Cross-workspace reply signals · status replied · all workspaces"
       />
 
       {error ? (
@@ -75,7 +75,7 @@ export function AdminUnifiedInbox() {
         rows={rows}
         rowKey={(lead) => lead.id}
         isLoading={isLoading}
-        emptyMessage="No replied leads across tenants."
+        emptyMessage="No replied leads across workspaces."
       />
     </section>
   );

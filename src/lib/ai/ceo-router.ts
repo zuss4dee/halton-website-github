@@ -756,6 +756,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
           model: agentModel,
           system_prompt: resolvedSystemPrompt,
           client_id: clientId,
+          reports_to_agent_id: ceoAgent.id,
           skills: getDefaultSkillsForRole(normalizedRole),
           tool_bindings: getDefaultSkillsForRole(normalizedRole),
           is_active: true,

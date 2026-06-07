@@ -50,7 +50,7 @@ export function ClientManageCampaignsHub() {
           {companyName}
         </h1>
         <p className="mt-4 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
-          TENANT_ID // {clientId}
+          CLIENT_ID // {clientId}
           {client.sending_domain ? ` · DOMAIN // ${client.sending_domain}` : ""}
         </p>
         <p className="mt-6 max-w-2xl font-mono text-[11px] leading-relaxed text-ink-soft">

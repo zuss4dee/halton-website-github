@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { OrgChart } from "@/components/workspace/OrgChart";
 import { supabase } from "@/lib/supabase";
 import {
   fetchClientWorkspaceData,
   type ClientWorkspacePayload,
   type LiveLeadSignalRow,
 } from "@/lib/workspace/clientWorkspaceData";
+import { useOrgChart } from "@/lib/workspace/useOrgChart";
 
 type ClientWorkspacePortalProps = {
   clientId: string;
@@ -74,6 +76,11 @@ export function ClientWorkspacePortal({ clientId }: ClientWorkspacePortalProps) 
   const [payload, setPayload] = useState<ClientWorkspacePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const {
+    tree: orgTree,
+    isLoading: isOrgChartLoading,
+    error: orgChartError,
+  } = useOrgChart(clientId);
 
   async function handleSignOut() {
     setIsSigningOut(true);
@@ -159,6 +166,14 @@ export function ClientWorkspacePortal({ clientId }: ClientWorkspacePortalProps) 
             label="Ready to Close (Replies)"
             value={readyToClose}
             isLoading={isLoading}
+          />
+        </section>
+
+        <section className="mb-20 md:mb-28">
+          <OrgChart
+            tree={orgTree}
+            isLoading={isOrgChartLoading}
+            error={orgChartError}
           />
         </section>
 

@@ -6,6 +6,7 @@ import {
   formatAdminDate,
 } from "@/components/admin/AdminBrutalist";
 import { HighIntentLeadDrawer } from "@/components/admin/HighIntentLeadDrawer";
+import { ViewOrgChartButton } from "@/components/workspace/ViewOrgChartButton";
 import {
   readInboundReplyFromLead,
   truncateReplyPreview,
@@ -190,6 +191,7 @@ export function WorkspaceCommandDashboard({
         code="01 // ANALYTICS"
         title="Analytics"
         description="Workspace telemetry · replied pipeline · agent operations"
+        trailing={<ViewOrgChartButton clientId={clientId} />}
       />
 
       <section className="grid grid-cols-1 gap-0 sm:grid-cols-2 lg:grid-cols-3">

@@ -190,7 +190,7 @@ export function WorkspaceInfrastructure({ clientId: clientIdProp }: WorkspaceInf
   const handleRunOutboundTest = async () => {
     const resolvedClientId = client.id ?? clientIdProp;
     if (!resolvedClientId) {
-      alert("ERROR: No active client UUID. Open a tenant workspace and try again.");
+      alert("ERROR: No active client UUID. Open a workspace and try again.");
       return;
     }
 
@@ -242,7 +242,7 @@ export function WorkspaceInfrastructure({ clientId: clientIdProp }: WorkspaceInf
   const handleTestNotion = async () => {
     const resolvedClientId = client.id ?? clientIdProp;
     if (!resolvedClientId) {
-      alert("ERROR: No active client UUID. Open a tenant workspace and try again.");
+      alert("ERROR: No active client UUID. Open a workspace and try again.");
       return;
     }
 
@@ -287,7 +287,7 @@ export function WorkspaceInfrastructure({ clientId: clientIdProp }: WorkspaceInf
           [ INFRASTRUCTURE_VAULT ] - INTEGRATION KEYS
         </h1>
         <p className="mt-4 text-[10px] tracking-[0.14em] uppercase text-gray-500">
-          TENANT_SCOPED // HIGH_DENSITY_SECRET_GRID
+          WORKSPACE_SCOPED // HIGH_DENSITY_SECRET_GRID
         </p>
       </header>
 

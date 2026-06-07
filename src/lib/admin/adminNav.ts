@@ -21,7 +21,7 @@ export type WorkspaceNavItem = {
 };
 
 export const GLOBAL_NAV: GlobalNavItem[] = [
-  { label: "00 // TENANT_INDEX", to: "/admin" },
+  { label: "00 // ALL CLIENTS", to: "/admin" },
   { label: "01 // UNIFIED_INBOX", to: "/admin/inbox" },
   { label: "02 // DOMAIN_FLEET", to: "/admin/domains" },
 ];

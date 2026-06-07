@@ -137,7 +137,7 @@ export function OnboardClientSheet({
             Onboard Client
           </SheetTitle>
           <SheetDescription className="font-mono text-[10px] tracking-[0.12em] text-ink-soft uppercase">
-            Provision tenant · auth · outbound defaults
+            Provision workspace · auth · outbound defaults
           </SheetDescription>
         </SheetHeader>
 
@@ -278,7 +278,7 @@ export function OnboardClientTrigger({ onClick, clientCount }: OnboardClientTrig
             Onboard new client
           </span>
           <span className="mt-1 block font-mono text-[9px] tracking-[0.12em] text-ink/45 uppercase">
-            Tenant · login · sending domain
+            Workspace · login · sending domain
           </span>
         </span>
       </span>
