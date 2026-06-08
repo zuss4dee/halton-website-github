@@ -12,6 +12,40 @@ const UUID_PATTERN =
 const AGENT_ORG_SELECT =
   "id, name, role, model, reports_to_agent_id, is_active, created_at" as const;
 
+const AGENT_ORG_SELECT_LEGACY =
+  "id, name, role, model, is_active, created_at" as const;
+
+type UseOrgChartOptions = {
+  enabled?: boolean;
+};
+
+async function fetchAgentsForOrgChart(workspaceClientId: string) {
+  const primary = await supabase
+    .from("agents")
+    .select(AGENT_ORG_SELECT)
+    .eq("client_id", workspaceClientId)
+    .order("created_at", { ascending: true });
+
+  if (!primary.error) {
+    return primary;
+  }
+
+  const message = primary.error.message.toLowerCase();
+  const missingHierarchyColumn =
+    primary.error.code === "42703" || message.includes("reports_to_agent_id");
+
+  if (!missingHierarchyColumn) {
+    return primary;
+  }
+
+  console.warn("[org-chart] reports_to_agent_id missing — using legacy agent select");
+  return supabase
+    .from("agents")
+    .select(AGENT_ORG_SELECT_LEGACY)
+    .eq("client_id", workspaceClientId)
+    .order("created_at", { ascending: true });
+}
+
 async function resolveWorkspaceClientId(clientIdParam: string): Promise<string | null> {
   const trimmed = clientIdParam.trim();
   if (!trimmed) return null;
@@ -31,54 +65,21 @@ async function resolveWorkspaceClientId(clientIdParam: string): Promise<string |
   return (data?.id as string | undefined) ?? null;
 }
 
-export function useOrgChart(clientIdParam: string) {
+export function useOrgChart(clientIdParam: string, options: UseOrgChartOptions = {}) {
+  const enabled = options.enabled ?? true;
   const [tree, setTree] = useState<AgentOrgNode[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [resolvedClientId, setResolvedClientId] = useState<string | null>(null);
 
   const fetchOrgTree = useCallback(async () => {
+    if (!enabled || typeof window === "undefined") return;
+
     setIsLoading(true);
     setError(null);
 
-    const workspaceClientId = await resolveWorkspaceClientId(clientIdParam);
-    setResolvedClientId(workspaceClientId);
-
-    if (!workspaceClientId) {
-      setTree([]);
-      setError("Workspace not found.");
-      setIsLoading(false);
-      return;
-    }
-
-    const { data, error: fetchError } = await supabase
-      .from("agents")
-      .select(AGENT_ORG_SELECT)
-      .eq("client_id", workspaceClientId)
-      .order("created_at", { ascending: true });
-
-    if (fetchError) {
-      console.error("[org-chart] agents fetch:", fetchError);
-      setTree([]);
-      setError(fetchError.message);
-      setIsLoading(false);
-      return;
-    }
-
-    setTree(buildAgentOrgTree((data ?? []) as AgentOrgRow[]));
-    setIsLoading(false);
-  }, [clientIdParam]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      setIsLoading(true);
-      setError(null);
-
+    try {
       const workspaceClientId = await resolveWorkspaceClientId(clientIdParam);
-      if (cancelled) return;
-
       setResolvedClientId(workspaceClientId);
 
       if (!workspaceClientId) {
@@ -88,32 +89,42 @@ export function useOrgChart(clientIdParam: string) {
         return;
       }
 
-      const { data, error: fetchError } = await supabase
-        .from("agents")
-        .select(AGENT_ORG_SELECT)
-        .eq("client_id", workspaceClientId)
-        .order("created_at", { ascending: true });
-
-      if (cancelled) return;
+      const { data, error: fetchError } = await fetchAgentsForOrgChart(workspaceClientId);
 
       if (fetchError) {
         console.error("[org-chart] agents fetch:", fetchError);
         setTree([]);
         setError(fetchError.message);
-      } else {
-        setTree(buildAgentOrgTree((data ?? []) as AgentOrgRow[]));
+        setIsLoading(false);
+        return;
       }
 
+      setTree(buildAgentOrgTree((data ?? []) as AgentOrgRow[]));
       setIsLoading(false);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [clientIdParam]);
+    } catch (fetchError) {
+      console.error("[org-chart] unexpected fetch failure:", fetchError);
+      setTree([]);
+      setError(
+        fetchError instanceof Error ? fetchError.message : "Unable to load agent org chart.",
+      );
+      setIsLoading(false);
+    }
+  }, [clientIdParam, enabled]);
 
   useEffect(() => {
-    if (!resolvedClientId) return;
+    if (!enabled) {
+      setIsLoading(false);
+      setError(null);
+      setTree([]);
+      setResolvedClientId(null);
+      return;
+    }
+
+    void fetchOrgTree();
+  }, [enabled, fetchOrgTree]);
+
+  useEffect(() => {
+    if (!enabled || !resolvedClientId || typeof window === "undefined") return;
 
     const channel = supabase
       .channel(`workspace-org-chart-${resolvedClientId}`)
@@ -134,7 +145,7 @@ export function useOrgChart(clientIdParam: string) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [fetchOrgTree, resolvedClientId]);
+  }, [enabled, fetchOrgTree, resolvedClientId]);
 
   return { tree, isLoading, error, refetch: fetchOrgTree };
 }

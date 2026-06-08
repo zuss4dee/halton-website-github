@@ -15,7 +15,7 @@ type OrgChartDialogProps = {
 };
 
 export function OrgChartDialog({ clientId, open, onOpenChange }: OrgChartDialogProps) {
-  const { tree, isLoading, error } = useOrgChart(clientId);
+  const { tree, isLoading, error } = useOrgChart(clientId, { enabled: open });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

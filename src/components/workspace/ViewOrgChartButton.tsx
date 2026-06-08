@@ -43,7 +43,9 @@ export function ViewOrgChartButton({
       >
         {label}
       </button>
-      <OrgChartDialog clientId={clientId} open={open} onOpenChange={setOpen} />
+      {open ? (
+        <OrgChartDialog clientId={clientId} open={open} onOpenChange={setOpen} />
+      ) : null}
     </>
   );
 }
