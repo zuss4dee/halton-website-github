@@ -36,6 +36,13 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     scopes: ["ceo"],
   },
   {
+    id: "fetch_crm_lead",
+    label: "Fetch CRM Lead",
+    description:
+      "Search workspace leads by name, email, or company before building automations.",
+    scopes: ["ceo"],
+  },
+  {
     id: "executive_override",
     label: "Executive Override",
     description:
@@ -91,6 +98,7 @@ const CEO_DEFAULT_SKILLS = [
   "write_knowledge_vault",
   "build_automation",
   "delegate_sub_agent",
+  "fetch_crm_lead",
   "executive_override",
 ] as const;
 
@@ -255,6 +263,7 @@ const CEO_SKILL_TOOL_MAP: Record<string, string> = {
   read_knowledge_vault: "search_client_knowledge",
   write_knowledge_vault: "save_to_knowledge_vault",
   build_automation: "build_and_run_automation",
+  fetch_crm_lead: "fetch_crm_lead",
   executive_override: "execute_executive_override",
   hire_sub_agent: "hireSubAgent",
   trigger_outbound_campaign: "triggerOutboundCampaign",

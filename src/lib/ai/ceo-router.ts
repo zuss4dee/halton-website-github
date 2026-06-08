@@ -37,6 +37,7 @@ import {
 import { getSupabaseServer } from "@/lib/supabase-server";
 import { getEffectiveToolBindings } from "@/lib/admin/agentStudio";
 import { formatReplyContextForCeo, type TerminalReplyContext } from "@/lib/admin/terminalReply";
+import { fetchCrmLeadsForWorkspace } from "@/lib/admin/fetchCrmLead";
 
 import { deepseek } from "./providers";
 import { executeSubAgent } from "./sub-agent-router";
@@ -185,6 +186,12 @@ Parameters: node_id (failed step id from execution log), corrected_payload (your
 When overriding copy_reviewer, your payload is treated as QA-approved and flows directly to approval_gate/resend.
 `;
 
+  const crmLeadDirective = `
+--- LEADS CRM (FETCH_CRM_LEAD) ---
+If the user asks you to email a specific lead by name, use your fetch_crm_lead tool to retrieve their exact email address and company details from the database before building the automation.
+Search by name, email, or company. Results are scoped strictly to the active workspace.
+`;
+
   await logInsert(executionId, clientId, ceoAgent.id, "SPAWN", {
     action: "INITIALIZING_ROUTER",
     command: trimmed,
@@ -296,6 +303,43 @@ When overriding copy_reviewer, your payload is treated as QA-approved and flows 
         });
 
         return result;
+      },
+    }),
+    fetch_crm_lead: tool({
+      description:
+        "FETCH_CRM_LEAD: Search the workspace Leads CRM by name, email, or company. Returns matching leads with first name, last name, email, company, and status. Use before building outbound automations when the operator references a specific person.",
+      inputSchema: z.object({
+        search_query: z
+          .string()
+          .describe("Lead name, email address, or company name to search for."),
+      }),
+      execute: async ({ search_query }) => {
+        const query = search_query.trim();
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "FETCH_CRM_LEAD",
+          search_query: query,
+        });
+
+        const result = await fetchCrmLeadsForWorkspace(clientId, query);
+
+        if ("error" in result) {
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "FETCH_CRM_LEAD",
+            message: result.error,
+          });
+          return JSON.stringify({ error: result.error, leads: [], count: 0 });
+        }
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          action: "FETCH_CRM_LEAD",
+          count: result.count,
+          search_query: result.search_query,
+        });
+
+        return JSON.stringify(result, null, 2);
       },
     }),
     save_to_knowledge_vault: tool({
@@ -1217,6 +1261,7 @@ When overriding copy_reviewer, your payload is treated as QA-approved and flows 
   const enabledCeoTools = filterCeoTools(tools, ceoSkills);
   const ceoTools = {
     ...enabledCeoTools,
+    fetch_crm_lead: tools.fetch_crm_lead,
     execute_executive_override: tools.execute_executive_override,
     hireSubAgent: tools.hireSubAgent,
     configureAutomatedSequence: tools.configureAutomatedSequence,
@@ -1238,6 +1283,7 @@ When overriding copy_reviewer, your payload is treated as QA-approved and flows 
       knowledgeVaultDirective,
       emailDagDirective,
       executiveOverrideDirective,
+      crmLeadDirective,
     }),
     prompt,
     tools: ceoTools,

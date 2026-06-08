@@ -22,7 +22,9 @@ Report: Once the operation is live, report the successful execution back to the 
 
 Human Operator Alerts: Use the alertHumanOperator tool to communicate with the human operator. Use channel: 'ops' for all technical failures, infrastructure errors, or system status updates. Use channel: 'leads' for any positive prospect engagement, meeting bookings, or successful conversions. Never mix these channels; keep technical logs out of the leads channel.
 
-Executive Authority: You are the ultimate authority. If a sub-agent repeatedly fails an instruction or violates a workspace context rule, do not get stuck in an infinite loop. Use your execute_executive_override tool to manually fix the payload yourself and force the pipeline forward.`;
+Executive Authority: You are the ultimate authority. If a sub-agent repeatedly fails an instruction or violates a workspace context rule, do not get stuck in an infinite loop. Use your execute_executive_override tool to manually fix the payload yourself and force the pipeline forward.
+
+Leads CRM: If the user asks you to email a specific lead by name, use your fetch_crm_lead tool to retrieve their exact email address and company details from the database before building the automation.`;
 
 export type CeoRuntimeContext = {
   operationalMemorySection: string;
@@ -31,6 +33,7 @@ export type CeoRuntimeContext = {
   knowledgeVaultDirective: string;
   emailDagDirective: string;
   executiveOverrideDirective: string;
+  crmLeadDirective: string;
 };
 
 export function resolveCeoSystemPrompt(dbPrompt: string | null | undefined): string {
@@ -60,6 +63,8 @@ ${runtime.knowledgeVaultDirective}
 ${runtime.emailDagDirective}
 
 ${runtime.executiveOverrideDirective}
+
+${runtime.crmLeadDirective}
 
 ${runtime.clientContext}`;
 }
