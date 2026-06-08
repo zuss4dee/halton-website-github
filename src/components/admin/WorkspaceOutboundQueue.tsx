@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { AttentionDot } from "@/components/admin/AttentionDot";
 import {
   LEAD_CAMPAIGN_STATUS,
   LEAD_QUEUE_STATUS,
@@ -8,6 +9,9 @@ import {
 } from "@/lib/admin/leadsRepository";
 import { AddLeadTrigger } from "@/components/admin/AddLeadSheet";
 import { sendApprovedLeadEmail } from "@/lib/admin/outboundSend";
+import { resolveWorkspaceClientId } from "@/lib/admin/resolveWorkspaceClientId";
+import { useWorkspaceAttention } from "@/lib/admin/useWorkspaceAttention";
+import { invalidateWorkspaceAttention } from "@/lib/admin/workspaceAttentionEvents";
 import { supabase } from "@/lib/supabase";
 
 type WorkspaceOutboundQueueProps = {
@@ -52,22 +56,28 @@ function QueueTabButton({
   active,
   label,
   onClick,
+  attention = false,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  attention?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={attention ? `${label} — needs attention` : undefined}
       className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
         active
           ? "bg-gray-900 text-white"
           : "border border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900"
       }`}
     >
-      {label}
+      <span className="inline-flex items-center gap-2">
+        {attention ? <AttentionDot /> : null}
+        <span>{label}</span>
+      </span>
     </button>
   );
 }
@@ -78,7 +88,10 @@ export function WorkspaceOutboundQueue({
   embedded = false,
   onAddLead,
 }: WorkspaceOutboundQueueProps) {
-  const workspaceClientId = clientId.trim();
+  const { hasPendingDrafts, refetch: refetchAttention } = useWorkspaceAttention(clientId, {
+    refreshKey,
+  });
+  const [workspaceClientId, setWorkspaceClientId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<QueueTab>("active");
   const [queue, setQueue] = useState<LeadRow[]>([]);
@@ -89,6 +102,28 @@ export function WorkspaceOutboundQueue({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [listPage, setListPage] = useState(1);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const resolved = await resolveWorkspaceClientId(clientId);
+      if (!cancelled) {
+        setWorkspaceClientId(resolved);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  const syncAttention = useCallback(() => {
+    void refetchAttention();
+    invalidateWorkspaceAttention(clientId);
+  }, [clientId, refetchAttention]);
+
+  const showPendingAttention =
+    hasPendingDrafts && !(activeTab === "pending" && !isLoading && queue.length === 0);
   const isActiveTab = activeTab === "active";
   const isSentTab = activeTab === "sent";
   const totalItems = queue.length;
@@ -138,10 +173,13 @@ export function WorkspaceOutboundQueue({
     } else {
       const rows = (data ?? []) as LeadRow[];
       setQueue(rows.filter((row) => row.client_id === workspaceClientId));
+      if (activeTab === "pending" && rows.length === 0) {
+        syncAttention();
+      }
     }
 
     setIsLoading(false);
-  }, [activeTab, workspaceClientId]);
+  }, [activeTab, syncAttention, workspaceClientId]);
 
   useEffect(() => {
     void fetchQueue();
@@ -219,6 +257,7 @@ export function WorkspaceOutboundQueue({
     setEditedCopy("");
     setStatusMessage("> SYSTEM: SENT VIA RESEND — RECORD ARCHIVED TO OUTBOX");
     await fetchQueue();
+    syncAttention();
     setIsSubmitting(false);
   };
 
@@ -253,6 +292,7 @@ export function WorkspaceOutboundQueue({
     setSelectedLead(null);
     setEditedCopy("");
     await fetchQueue();
+    syncAttention();
     setIsSubmitting(false);
   };
 
@@ -278,7 +318,7 @@ export function WorkspaceOutboundQueue({
         <header className="border-b border-gray-200 pb-8 md:pb-10">
           <Link
             to="/admin/client/$id/orchestration"
-            params={{ id: workspaceClientId }}
+            params={{ id: clientId }}
             className="mb-6 inline-block text-sm text-gray-500 transition-colors hover:text-gray-900"
           >
             ← Return to orchestration
@@ -299,6 +339,7 @@ export function WorkspaceOutboundQueue({
         <QueueTabButton
           active={activeTab === "pending"}
           label="Pending Approval"
+          attention={showPendingAttention}
           onClick={() => setActiveTab("pending")}
         />
         <QueueTabButton

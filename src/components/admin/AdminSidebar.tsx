@@ -1,6 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { AttentionDot } from "@/components/admin/AttentionDot";
 import { GLOBAL_NAV, workspacePath, type WorkspaceNavSegment } from "@/lib/admin/adminNav";
+import { useWorkspaceAttention } from "@/lib/admin/useWorkspaceAttention";
 import { ViewOrgChartButton } from "@/components/workspace/ViewOrgChartButton";
 import { supabase } from "@/lib/supabase";
 
@@ -10,8 +12,9 @@ const UUID_PATTERN =
 const WORKSPACE_SIDEBAR_LINKS: {
   label: string;
   segment: Exclude<WorkspaceNavSegment, "global" | "dashboard">;
+  attention?: "pendingDrafts";
 }[] = [
-  { label: "04 // ACTIVE PIPELINE", segment: "outbound" },
+  { label: "04 // ACTIVE PIPELINE", segment: "outbound", attention: "pendingDrafts" },
   { label: "02 // CLIENT ASSETS", segment: "vault" },
   { label: "03 // CAMPAIGN RULES", segment: "workflow" },
   { label: "03a // AUTOMATED_SEQUENCE", segment: "sequence" },
@@ -40,25 +43,33 @@ function SidebarNavRow({
   search,
   label,
   isActive,
+  attention = false,
+  attentionLabel,
 }: {
   to: string;
   params?: Record<string, string>;
   search?: Record<string, string | boolean>;
   label: string;
   isActive: boolean;
+  attention?: boolean;
+  attentionLabel?: string;
 }) {
   return (
     <Link
       to={to}
       params={params}
       search={search}
+      aria-label={attention ? attentionLabel ?? `${label} — needs attention` : undefined}
       className={`block px-3 py-2.5 font-mono text-[10px] tracking-[0.18em] uppercase transition-colors ${
         isActive
           ? "bg-ink text-paper"
           : "text-ink-soft hover:bg-ink/[0.06] hover:text-ink"
       }`}
     >
-      {label}
+      <span className="inline-flex items-center gap-2">
+        {attention ? <AttentionDot /> : null}
+        <span>{label}</span>
+      </span>
     </Link>
   );
 }
@@ -70,6 +81,7 @@ export function AdminSidebar() {
     ? (pathname.split("/admin/client/")[1]?.split("/")[0] ?? null)
     : null;
   const [clientName, setClientName] = useState<string | null>(null);
+  const { hasPendingDrafts, pendingDraftCount } = useWorkspaceAttention(clientId ?? undefined);
 
   useEffect(() => {
     if (!clientId) {
@@ -151,6 +163,8 @@ export function AdminSidebar() {
               const href = workspacePath(clientId, item.segment);
               const isActive =
                 pathname === href || pathname.startsWith(`${href}/`);
+              const needsAttention =
+                item.attention === "pendingDrafts" && hasPendingDrafts;
 
               return (
                 <SidebarNavRow
@@ -158,6 +172,12 @@ export function AdminSidebar() {
                   to={href}
                   label={item.label}
                   isActive={isActive}
+                  attention={needsAttention}
+                  attentionLabel={
+                    needsAttention
+                      ? `${item.label} — ${pendingDraftCount} draft${pendingDraftCount === 1 ? "" : "s"} pending approval`
+                      : undefined
+                  }
                 />
               );
             })}
