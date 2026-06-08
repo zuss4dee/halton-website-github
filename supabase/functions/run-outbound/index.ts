@@ -35,6 +35,32 @@ type EnrichedTarget = {
 
 type ExecutionContext = Record<string, unknown>;
 
+type ApprovalQueueStatus =
+  | "pending"
+  | "approved"
+  | "needs_human_review"
+  | "qa_rejected";
+
+type QaEvaluationResult = {
+  queueStatus: ApprovalQueueStatus;
+  violations: string[];
+  source: string;
+};
+
+const SPAM_TRIGGER_PATTERN =
+  /\b(free|guarantee|act now|limited time|click here|buy now|urgent|winner|congratulations|100%|no risk)\b/i;
+const PLACEHOLDER_PATTERN = /\[(Your Name|Name|Company|Insert)\]/i;
+
+const QA_LEAD_FALLBACK_PROMPT = `You are the QA Lead — brand and compliance reviewer for outbound cold email.
+
+Evaluate the sanitized email BODY against brand guidelines. Return ONLY valid JSON (no markdown):
+{"verdict":"approved"|"qa_rejected"|"needs_human_review","violations":["reason 1"]}
+
+Rules:
+- approved: no banned/spam words, correct casual B2B tone, max 3 sentences, signed as Damilare, no placeholders, no subject line in body
+- qa_rejected: clear violations (spam triggers, wrong tone, placeholders, subject in body, too long)
+- needs_human_review: ambiguous edge cases or uncertain brand fit`;
+
 const DEFAULT_DEEPSEEK_PROMPT =
   "Write a casual, 2-sentence cold email opening line to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Acknowledge their role and ask if they are currently taking on new clients. Do not include placeholders or signature blocks.";
 
@@ -66,6 +92,7 @@ Operational rules:
 ${DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS}`;
 
 const DELIVERABILITY_CHIEF_ROLE = "DELIVERABILITY_CHIEF";
+const QA_LEAD_ROLE = "QA_LEAD";
 const DEFAULT_DEEPSEEK_WRITER_ROLE = "DEEPSEEK_WRITER";
 const DEFAULT_COPYWRITER_SYSTEM = "You are an elite B2B copywriter.";
 
@@ -623,6 +650,175 @@ async function fetchDeliverabilityChiefRuntime(
   return { ...runtime, systemPrompt };
 }
 
+function collectHeuristicQaViolations(copy: string): string[] {
+  const violations: string[] = [];
+  const trimmed = copy.trim();
+  if (!trimmed) violations.push("Empty email body");
+  if (SPAM_TRIGGER_PATTERN.test(trimmed)) {
+    violations.push("Contains spam trigger words");
+  }
+  if (PLACEHOLDER_PATTERN.test(trimmed)) {
+    violations.push("Contains placeholder text");
+  }
+  if (/^Subject:/im.test(trimmed)) {
+    violations.push("Subject line included in body");
+  }
+  const sentenceCount = trimmed
+    .split(/[.!?]+/)
+    .map((part) => part.trim())
+    .filter(Boolean).length;
+  if (sentenceCount > 3) {
+    violations.push("Exceeds 3 sentence limit");
+  }
+  if (!/Damilare/i.test(trimmed)) {
+    violations.push("Missing signature (Damilare)");
+  }
+  return violations;
+}
+
+async function fetchClientBrandContext(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+): Promise<string> {
+  const { data, error } = await supabaseAdmin
+    .from("clients")
+    .select("tone_of_voice, target_icp, core_offer")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  if (error || !data) return "";
+
+  const parts: string[] = [];
+  if (typeof data.tone_of_voice === "string" && data.tone_of_voice.trim()) {
+    parts.push(`Brand tone: ${data.tone_of_voice.trim()}`);
+  }
+  if (typeof data.target_icp === "string" && data.target_icp.trim()) {
+    parts.push(`Target ICP: ${data.target_icp.trim()}`);
+  }
+  if (typeof data.core_offer === "string" && data.core_offer.trim()) {
+    parts.push(`Core offer: ${data.core_offer.trim()}`);
+  }
+
+  return parts.length > 0 ? `\n\nClient brand context:\n${parts.join("\n")}` : "";
+}
+
+function parseQaVerdictJson(raw: string): {
+  verdict: ApprovalQueueStatus;
+  violations: string[];
+} | null {
+  const cleaned = raw.replace(/```json\n?|\n?```/g, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned) as {
+      verdict?: string;
+      violations?: unknown;
+    };
+    const verdict = parsed.verdict;
+    const violations = Array.isArray(parsed.violations)
+      ? parsed.violations.filter((entry): entry is string => typeof entry === "string")
+      : [];
+
+    if (
+      verdict === "approved" ||
+      verdict === "qa_rejected" ||
+      verdict === "needs_human_review" ||
+      verdict === "pending"
+    ) {
+      return { verdict, violations };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function runQaLeadEvaluation(
+  keys: VaultKeys,
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  sanitizedCopy: string,
+  deliverabilityChiefRuntime: AgentRuntimeConfig,
+): Promise<QaEvaluationResult> {
+  const heuristicViolations = collectHeuristicQaViolations(sanitizedCopy);
+  if (heuristicViolations.length > 0) {
+    return {
+      queueStatus: "qa_rejected",
+      violations: heuristicViolations,
+      source: "qa_heuristic",
+    };
+  }
+
+  let qaRuntime = await fetchAgentRuntimeConfig(supabaseAdmin, clientId, {
+    role: QA_LEAD_ROLE,
+  });
+  if (!qaRuntime.agentId) {
+    qaRuntime = deliverabilityChiefRuntime;
+  }
+
+  const brandContext = await fetchClientBrandContext(supabaseAdmin, clientId);
+  const qaSystem = `${buildRuntimeSystemPrompt(qaRuntime, QA_LEAD_FALLBACK_PROMPT)}${brandContext}`;
+  const qaConfig: AgentRuntimeConfig = { ...qaRuntime, systemPrompt: qaSystem };
+
+  console.info(
+    `[qa_lead] agent=${qaConfig.role} model=${qaConfig.model} evaluating copy length=${sanitizedCopy.length}`,
+  );
+
+  const rawVerdict = await runLlmCompletion(
+    keys,
+    qaConfig,
+    `Evaluate this sanitized email body:\n\n${sanitizedCopy}`,
+    "qa_evaluation",
+  );
+
+  const parsed = parseQaVerdictJson(rawVerdict);
+  if (!parsed) {
+    return {
+      queueStatus: "needs_human_review",
+      violations: ["QA agent returned unparseable verdict"],
+      source: "qa_lead_fallback",
+    };
+  }
+
+  if (parsed.verdict === "approved") {
+    return { queueStatus: "approved", violations: [], source: "qa_lead" };
+  }
+  if (parsed.verdict === "qa_rejected") {
+    return {
+      queueStatus: "qa_rejected",
+      violations: parsed.violations.length > 0 ? parsed.violations : ["QA rejected copy"],
+      source: "qa_lead",
+    };
+  }
+
+  return {
+    queueStatus: parsed.verdict === "pending" ? "pending" : "needs_human_review",
+    violations: parsed.violations,
+    source: "qa_lead",
+  };
+}
+
+async function assertLeadApprovedForSend(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  email: string,
+): Promise<{ approved: boolean; queueStatus: string | null }> {
+  const { data: leadRow, error } = await supabaseAdmin
+    .from("leads")
+    .select("queue_status")
+    .eq("client_id", clientId)
+    .eq("email", email.trim())
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[approval_gate] lead status lookup failed:", error.message);
+    return { approved: false, queueStatus: null };
+  }
+
+  return {
+    approved: leadRow?.queue_status === "approved",
+    queueStatus: (leadRow?.queue_status as string | null) ?? null,
+  };
+}
+
 async function runResend(
   keys: VaultKeys,
   to: string,
@@ -809,6 +1005,27 @@ serve(async (req) => {
         throw new Error("send_approved: Missing body (approved copy)");
       }
 
+      if (leadId) {
+        const { data: leadRow, error: leadFetchError } = await supabaseAdmin
+          .from("leads")
+          .select("queue_status")
+          .eq("id", leadId)
+          .eq("client_id", clientId)
+          .maybeSingle();
+
+        if (leadFetchError) {
+          throw new Error(`send_approved: Failed to load lead: ${leadFetchError.message}`);
+        }
+        if (!leadRow) {
+          throw new Error("send_approved: Lead not found");
+        }
+        if (leadRow.queue_status !== "approved") {
+          throw new Error(
+            `send_approved: Lead not approved (status: ${leadRow.queue_status ?? "unknown"})`,
+          );
+        }
+      }
+
       const subject = `[SANDBOX: ${recipientEmail}] ${originalSubject}`;
       const resendResult = await runResend(keys, SANDBOX_TO_EMAIL, subject, textBody);
 
@@ -875,8 +1092,8 @@ serve(async (req) => {
     for (const node of sortedNodes) {
       const nodeType = node.type === "tool" ? getNodeDataString(node, "executor", node.type) : node.type;
 
-      if (haltedAtApprovalGate && nodeType !== "resend_email") {
-        console.info(`[${node.id}] Skipping ${nodeType} — engine halted at approval_gate`);
+      if (haltedAtApprovalGate) {
+        console.info(`[${node.id}] Skipping ${nodeType} — pipeline halted (approval required)`);
         executionLog.push({ nodeId: node.id, type: nodeType, status: "skipped_halted" });
         continue;
       }
@@ -1030,12 +1247,25 @@ serve(async (req) => {
               "copy_reviewer",
             );
 
+            const qaResult = await runQaLeadEvaluation(
+              keys,
+              supabaseAdmin,
+              clientId,
+              sanitizedText,
+              deliverabilityChiefRuntime,
+            );
+
             context[node.id] = {
               copy: sanitizedText,
               agentId: deliverabilityChiefRuntime.agentId,
+              qa: qaResult,
             };
             executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
-            console.info(`[${node.id}] copy_reviewer sanitized length:`, sanitizedText.length);
+            console.info(
+              `[${node.id}] copy_reviewer sanitized length:`,
+              sanitizedText.length,
+              `qa=${qaResult.queueStatus}`,
+            );
             stepResult = context[node.id];
             break;
           }
@@ -1050,6 +1280,36 @@ serve(async (req) => {
               ? `${lead.first_name} ${lead.last_name}`.trim() || lead.first_name
               : "Prospect";
 
+            const reviewerNode = sortedNodes.find((candidate) => candidate.type === "copy_reviewer");
+            const reviewerCtx = reviewerNode ? context[reviewerNode.id] : null;
+            let queueStatus: ApprovalQueueStatus = "pending";
+            let qaViolations: string[] = [];
+            let qaSource = "default";
+
+            if (reviewerCtx && typeof reviewerCtx === "object") {
+              const qa = (reviewerCtx as Record<string, unknown>).qa;
+              if (qa && typeof qa === "object") {
+                const qaRecord = qa as Record<string, unknown>;
+                const status = qaRecord.queueStatus;
+                if (
+                  status === "approved" ||
+                  status === "qa_rejected" ||
+                  status === "needs_human_review" ||
+                  status === "pending"
+                ) {
+                  queueStatus = status;
+                }
+                if (Array.isArray(qaRecord.violations)) {
+                  qaViolations = qaRecord.violations.filter(
+                    (entry): entry is string => typeof entry === "string",
+                  );
+                }
+                if (typeof qaRecord.source === "string") {
+                  qaSource = qaRecord.source;
+                }
+              }
+            }
+
             const { error: queueError } = await supabaseAdmin.from("leads").upsert(
               {
                 client_id: clientId,
@@ -1059,7 +1319,7 @@ serve(async (req) => {
                 target_role: lead?.title ?? null,
                 generated_copy: bodyText,
                 campaign_status: "PENDING_REVIEW",
-                queue_status: "pending",
+                queue_status: queueStatus,
               },
               { onConflict: "email,client_id" },
             );
@@ -1075,17 +1335,29 @@ serve(async (req) => {
               email: leadEmail,
               subject,
               body: bodyText,
-              queue_status: "pending",
+              queue_status: queueStatus,
+              qa_violations: qaViolations,
+              qa_source: qaSource,
               source: "copy_reviewer",
             };
             context[node.id] = queuePayload;
             executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
-            console.info(
-              `[${node.id}] approval_gate HARD STOP — queued for human review; resend_email will not run`,
-              queuePayload,
-            );
+
+            haltedAtApprovalGate = queueStatus !== "approved";
+
+            if (haltedAtApprovalGate) {
+              console.info(
+                `[${node.id}] approval_gate HALT — queue_status=${queueStatus}; resend_email blocked until approved`,
+                queuePayload,
+              );
+            } else {
+              console.info(
+                `[${node.id}] approval_gate QA auto-approved — resend_email may proceed`,
+                queuePayload,
+              );
+            }
+
             stepResult = queuePayload;
-            haltedAtApprovalGate = !testEmail?.trim();
             break;
           }
 
@@ -1103,6 +1375,33 @@ serve(async (req) => {
               lead?.email?.trim() ||
               testEmail ||
               SANDBOX_TO_EMAIL;
+
+            const approvalCheck = await assertLeadApprovedForSend(
+              supabaseAdmin,
+              clientId,
+              intendedRecipient,
+            );
+
+            if (!approvalCheck.approved) {
+              const blockedStatus = approvalCheck.queueStatus ?? "missing";
+              context[node.id] = {
+                blocked: true,
+                queue_status: blockedStatus,
+                intendedRecipient,
+              };
+              executionLog.push({
+                nodeId: node.id,
+                type: nodeType,
+                status: "blocked_not_approved",
+              });
+              console.info(
+                `[${node.id}] resend_email blocked — queue_status=${blockedStatus}, requires approved`,
+              );
+              stepResult = context[node.id];
+              haltedAtApprovalGate = true;
+              break;
+            }
+
             const subject = `[SANDBOX: ${intendedRecipient}] ${subjectBase}`;
 
             const resendResult = await runResend(

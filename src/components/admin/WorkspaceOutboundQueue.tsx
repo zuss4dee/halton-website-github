@@ -5,6 +5,7 @@ import { AttentionDot } from "@/components/admin/AttentionDot";
 import {
   LEAD_CAMPAIGN_STATUS,
   LEAD_QUEUE_STATUS,
+  HUMAN_REVIEW_QUEUE_STATUSES,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
 import { AddLeadTrigger } from "@/components/admin/AddLeadSheet";
@@ -147,7 +148,7 @@ export function WorkspaceOutboundQueue({
 
     const queueStatus =
       activeTab === "pending"
-        ? LEAD_QUEUE_STATUS.PENDING
+        ? HUMAN_REVIEW_QUEUE_STATUSES
         : activeTab === "sent"
           ? LEAD_QUEUE_STATUS.SENT
           : LEAD_QUEUE_STATUS.ACTIVE;
@@ -155,8 +156,12 @@ export function WorkspaceOutboundQueue({
     let query = supabase
       .from("leads")
       .select("*")
-      .eq("client_id", workspaceClientId)
-      .eq("queue_status", queueStatus);
+      .eq("client_id", workspaceClientId);
+
+    query =
+      activeTab === "pending"
+        ? query.in("queue_status", [...HUMAN_REVIEW_QUEUE_STATUSES])
+        : query.eq("queue_status", queueStatus as string);
 
     query =
       activeTab === "sent"
@@ -232,6 +237,22 @@ export function WorkspaceOutboundQueue({
     }
 
     setIsSubmitting(true);
+
+    const { error: approveError } = await supabase
+      .from("leads")
+      .update({
+        queue_status: LEAD_QUEUE_STATUS.APPROVED,
+        generated_copy: editedCopy,
+      })
+      .eq("id", selectedLead.id)
+      .eq("client_id", workspaceClientId);
+
+    if (approveError) {
+      console.error("APPROVE STATUS ERROR:", approveError);
+      setStatusMessage("> ERROR: FAILED TO MARK DRAFT APPROVED");
+      setIsSubmitting(false);
+      return;
+    }
 
     const company =
       selectedLead.target_company?.trim() ||

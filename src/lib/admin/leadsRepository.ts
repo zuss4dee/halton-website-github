@@ -10,12 +10,22 @@ export const LEAD_CAMPAIGN_STATUS = {
 /** Human review queue / outbox — maps to leads.queue_status */
 export const LEAD_QUEUE_STATUS = {
   PENDING: "pending",
+  APPROVED: "approved",
+  NEEDS_HUMAN_REVIEW: "needs_human_review",
+  QA_REJECTED: "qa_rejected",
   SENT: "sent",
   DISCARDED: "discarded",
   PAUSED: "paused",
   ACTIVE: "active",
   COMPLETED: "completed",
 } as const;
+
+/** Statuses shown in the human Pending Approval queue */
+export const HUMAN_REVIEW_QUEUE_STATUSES = [
+  LEAD_QUEUE_STATUS.PENDING,
+  LEAD_QUEUE_STATUS.NEEDS_HUMAN_REVIEW,
+  LEAD_QUEUE_STATUS.QA_REJECTED,
+] as const;
 
 export type LeadQueueStatus = (typeof LEAD_QUEUE_STATUS)[keyof typeof LEAD_QUEUE_STATUS];
 

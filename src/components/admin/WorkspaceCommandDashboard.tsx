@@ -11,7 +11,7 @@ import {
   readInboundReplyFromLead,
   truncateReplyPreview,
 } from "@/lib/admin/inboundReply";
-import { LEAD_QUEUE_STATUS, type LeadRow } from "@/lib/admin/leadsRepository";
+import { LEAD_QUEUE_STATUS, HUMAN_REVIEW_QUEUE_STATUSES, type LeadRow } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
 type WorkspaceCommandDashboardProps = {
@@ -91,7 +91,7 @@ export function WorkspaceCommandDashboard({
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId)
-        .eq("queue_status", "pending"),
+        .in("queue_status", [...HUMAN_REVIEW_QUEUE_STATUSES]),
       supabase
         .from("leads")
         .select("*", { count: "exact", head: true })

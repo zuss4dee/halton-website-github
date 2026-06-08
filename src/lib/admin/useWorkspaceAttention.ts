@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { LEAD_QUEUE_STATUS } from "@/lib/admin/leadsRepository";
+import { LEAD_QUEUE_STATUS, HUMAN_REVIEW_QUEUE_STATUSES } from "@/lib/admin/leadsRepository";
 import { resolveWorkspaceClientId } from "@/lib/admin/resolveWorkspaceClientId";
 import {
   WORKSPACE_ATTENTION_INVALIDATE,
@@ -40,7 +40,7 @@ export function useWorkspaceAttention(
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", workspaceClientId)
-        .eq("queue_status", LEAD_QUEUE_STATUS.PENDING);
+        .in("queue_status", [...HUMAN_REVIEW_QUEUE_STATUSES]);
 
       if (error) {
         console.error("[workspace-attention] pending count:", error);
