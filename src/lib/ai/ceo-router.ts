@@ -177,6 +177,14 @@ The 4th node in a 5-step Apollo campaign MUST be type copy_reviewer with data.la
 approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.copy}} only.
 `;
 
+  const executiveOverrideDirective = `
+--- EXECUTIVE OVERRIDE (EXECUTIVE_OVERRIDE) ---
+You are the ultimate authority. If a sub-agent repeatedly fails an instruction or violates a workspace context rule (formatting, tone, data handling), do not get stuck in an infinite loop.
+Use execute_executive_override to halt the failing DAG step, inject your corrected_payload as the source of truth, and resume the pipeline through approval_gate (or resend when approved).
+Parameters: node_id (failed step id from execution log), corrected_payload (your fixed copy/data), reason (why override was required), test_email (safemode recipient), prior_context (optional — pass the "Final context" JSON from the failed run to skip completed upstream steps).
+When overriding copy_reviewer, your payload is treated as QA-approved and flows directly to approval_gate/resend.
+`;
+
   await logInsert(executionId, clientId, ceoAgent.id, "SPAWN", {
     action: "INITIALIZING_ROUTER",
     command: trimmed,
@@ -715,6 +723,176 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
         return summaryText;
       },
     }),
+    execute_executive_override: tool({
+      description:
+        "EXECUTIVE_OVERRIDE: Halt a failing DAG sub-agent step and inject CEO-corrected payload as the ultimate source of truth. Resumes the active workspace workflow from that node through approval_gate (and resend when QA-approved). Use when sub-agents violate workspace tone/format rules or loop on bad output. Pass prior_context from the failed run's Final context JSON to skip already-completed upstream steps.",
+      inputSchema: z.object({
+        node_id: z
+          .string()
+          .describe("The DAG node id that failed (e.g. reviewer-1, writer-1)."),
+        corrected_payload: z
+          .string()
+          .describe("The exact corrected copy or data the CEO has manually fixed."),
+        reason: z
+          .string()
+          .describe("Why the override was necessary (rule violated, loop avoided, etc.)."),
+        test_email: z
+          .string()
+          .optional()
+          .describe("Safemode recipient email — required to resume outbound execution."),
+        prior_context: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe(
+            "Optional context map from a failed automation run (Final context JSON) to skip upstream steps.",
+          ),
+      }),
+      execute: async ({ node_id, corrected_payload, reason, test_email, prior_context }) => {
+        const overrideNodeId = node_id.trim();
+        const payload = corrected_payload.trim();
+        const overrideReason = reason.trim();
+
+        if (!overrideNodeId) {
+          return "Executive override failed: node_id is required.";
+        }
+        if (!payload) {
+          return "Executive override failed: corrected_payload cannot be empty.";
+        }
+        if (!overrideReason) {
+          return "Executive override failed: reason is required.";
+        }
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "EXECUTIVE_OVERRIDE",
+          node_id: overrideNodeId,
+          reason: overrideReason,
+          payloadLength: payload.length,
+        });
+
+        const { data: workflow, error: workflowError } = await supabase
+          .from("workflows")
+          .select("graph_json")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (workflowError) {
+          const message = `Executive override failed: could not load active workflow (${workflowError.message}).`;
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "EXECUTIVE_OVERRIDE",
+            message,
+          });
+          return message;
+        }
+
+        const graph = workflow?.graph_json as
+          | { nodes?: unknown[]; edges?: unknown[] }
+          | null
+          | undefined;
+        const nodes = Array.isArray(graph?.nodes) ? graph.nodes : null;
+        const edges = Array.isArray(graph?.edges) ? graph.edges : null;
+
+        if (!nodes || !edges || nodes.length === 0) {
+          const message =
+            "Executive override failed: no active workflow graph. Run build_and_run_automation first.";
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "EXECUTIVE_OVERRIDE",
+            message,
+          });
+          return message;
+        }
+
+        const nodeExists = nodes.some((node) => {
+          if (!node || typeof node !== "object") return false;
+          return (node as { id?: string }).id === overrideNodeId;
+        });
+
+        if (!nodeExists) {
+          const message = `Executive override failed: node_id "${overrideNodeId}" not found in active workflow.`;
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "EXECUTIVE_OVERRIDE",
+            message,
+          });
+          return message;
+        }
+
+        const safemodeEmail = test_email?.trim();
+        if (!safemodeEmail) {
+          return "Executive override requires test_email to safely resume the outbound pipeline.";
+        }
+
+        const runResult = await invokeRunOutbound({
+          clientId,
+          nodes,
+          edges,
+          testEmail: safemodeEmail,
+          executiveOverride: {
+            node_id: overrideNodeId,
+            corrected_payload: payload,
+            reason: overrideReason,
+          },
+          priorContext: prior_context,
+        });
+
+        if (!runResult.ok) {
+          const message = `Executive override pipeline failed: ${runResult.error}`;
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "EXECUTIVE_OVERRIDE",
+            message,
+          });
+          return message;
+        }
+
+        const runPayload = runResult.data;
+        if (runPayload?.error) {
+          const message = `Executive override pipeline failed: ${runPayload.error}`;
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "EXECUTIVE_OVERRIDE",
+            message,
+          });
+          return message;
+        }
+
+        const executionLog = runPayload?.executionLog ?? [];
+        const executionLogSummary =
+          executionLog.length > 0
+            ? executionLog
+                .map((entry, idx) => {
+                  const stepType = entry.type ? ` (${entry.type})` : "";
+                  return `${idx + 1}. ${entry.nodeId}${stepType} -> ${entry.status}`;
+                })
+                .join("\n")
+            : "No execution steps returned.";
+
+        const summaryText = [
+          `Executive override applied at node "${overrideNodeId}".`,
+          `Reason: ${overrideReason}`,
+          "",
+          "Execution log:",
+          executionLogSummary,
+          "",
+          "Final context:",
+          JSON.stringify(runPayload?.context ?? {}, null, 2),
+        ].join("\n");
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          action: "EXECUTIVE_OVERRIDE",
+          node_id: overrideNodeId,
+          reason: overrideReason,
+          haltedAtApprovalGate: Boolean(
+            (runPayload as { haltedAtApprovalGate?: boolean } | undefined)?.haltedAtApprovalGate,
+          ),
+        });
+
+        return summaryText;
+      },
+    }),
     hireSubAgent: tool({
       description:
         "Hires a new specialized AI sub-agent for this workspace. Use after reviewing client data to dynamically build a tailored team. Provide detailed instructions that become the agent's system prompt. If role is DELIVERABILITY_CHIEF, the saved prompt is automatically merged with draconian fatal constraints (body-only output, max 3 sentences, sign as Damilare, no name hallucination).",
@@ -1039,6 +1217,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
   const enabledCeoTools = filterCeoTools(tools, ceoSkills);
   const ceoTools = {
     ...enabledCeoTools,
+    execute_executive_override: tools.execute_executive_override,
     hireSubAgent: tools.hireSubAgent,
     configureAutomatedSequence: tools.configureAutomatedSequence,
     logOperationalObservation: tools.logOperationalObservation,
@@ -1058,6 +1237,7 @@ approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.c
       clientContext,
       knowledgeVaultDirective,
       emailDagDirective,
+      executiveOverrideDirective,
     }),
     prompt,
     tools: ceoTools,

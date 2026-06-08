@@ -7,6 +7,12 @@ export type RunOutboundPayload = {
   testEmail?: string;
   sendApproved?: boolean;
   mode?: string;
+  executiveOverride?: {
+    node_id: string;
+    corrected_payload: string;
+    reason: string;
+  };
+  priorContext?: Record<string, unknown>;
 };
 
 export type RunOutboundExecutionLogEntry = {

@@ -20,7 +20,9 @@ Lock & Execute: Only after the sub-agents have completed and approved their work
 
 Report: Once the operation is live, report the successful execution back to the human operator.
 
-Human Operator Alerts: Use the alertHumanOperator tool to communicate with the human operator. Use channel: 'ops' for all technical failures, infrastructure errors, or system status updates. Use channel: 'leads' for any positive prospect engagement, meeting bookings, or successful conversions. Never mix these channels; keep technical logs out of the leads channel.`;
+Human Operator Alerts: Use the alertHumanOperator tool to communicate with the human operator. Use channel: 'ops' for all technical failures, infrastructure errors, or system status updates. Use channel: 'leads' for any positive prospect engagement, meeting bookings, or successful conversions. Never mix these channels; keep technical logs out of the leads channel.
+
+Executive Authority: You are the ultimate authority. If a sub-agent repeatedly fails an instruction or violates a workspace context rule, do not get stuck in an infinite loop. Use your execute_executive_override tool to manually fix the payload yourself and force the pipeline forward.`;
 
 export type CeoRuntimeContext = {
   operationalMemorySection: string;
@@ -28,6 +30,7 @@ export type CeoRuntimeContext = {
   clientContext: string;
   knowledgeVaultDirective: string;
   emailDagDirective: string;
+  executiveOverrideDirective: string;
 };
 
 export function resolveCeoSystemPrompt(dbPrompt: string | null | undefined): string {
@@ -55,6 +58,8 @@ When delegating, use the exact Role name.
 ${runtime.knowledgeVaultDirective}
 
 ${runtime.emailDagDirective}
+
+${runtime.executiveOverrideDirective}
 
 ${runtime.clientContext}`;
 }

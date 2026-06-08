@@ -12,6 +12,10 @@ import {
   type LeadMergeFields,
 } from "../_shared/leadMergeVariables.ts";
 import { appendOutboundFounderSignature } from "../_shared/outboundSignature.ts";
+import {
+  buildExecutiveOverrideNodeOutput,
+  shouldReusePriorContext,
+} from "../_shared/executiveOverride.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1179,7 +1183,35 @@ serve(async (req) => {
 
     const executionId = crypto.randomUUID();
     const context: ExecutionContext = {};
+    const executiveOverrideRaw = body.executiveOverride as Record<string, unknown> | undefined;
+    const executiveOverride =
+      executiveOverrideRaw &&
+      typeof executiveOverrideRaw.node_id === "string" &&
+      typeof executiveOverrideRaw.corrected_payload === "string" &&
+      typeof executiveOverrideRaw.reason === "string"
+        ? {
+            node_id: executiveOverrideRaw.node_id.trim(),
+            corrected_payload: String(executiveOverrideRaw.corrected_payload),
+            reason: String(executiveOverrideRaw.reason),
+          }
+        : null;
+    const priorContextRaw = body.priorContext;
+    const priorContext =
+      priorContextRaw &&
+      typeof priorContextRaw === "object" &&
+      !Array.isArray(priorContextRaw)
+        ? (priorContextRaw as Record<string, unknown>)
+        : null;
+
+    if (executiveOverride) {
+      console.info("[run-outbound] Executive override requested", {
+        node_id: executiveOverride.node_id,
+        reason: executiveOverride.reason,
+      });
+    }
+
     const sortedNodes = sortNodesByEdges(nodes, edges);
+    const sortedNodeIds = sortedNodes.map((node) => node.id);
     const executionLog: Array<{ nodeId: string; type: string; status: string }> = [];
     let deliverabilityChiefRuntime: AgentRuntimeConfig | null = null;
     let haltedAtApprovalGate = false;
@@ -1216,7 +1248,46 @@ serve(async (req) => {
 
       try {
         let stepResult: unknown = null;
+        let handledStep = false;
 
+        if (
+          priorContext &&
+          executiveOverride &&
+          shouldReusePriorContext(
+            node.id,
+            executiveOverride.node_id,
+            sortedNodeIds,
+            priorContext,
+          )
+        ) {
+          stepResult = priorContext[node.id];
+          context[node.id] = stepResult;
+          executionLog.push({
+            nodeId: node.id,
+            type: nodeType,
+            status: "skipped_prior_context",
+          });
+          console.info(`[${node.id}] Reusing prior context — executive override resume`);
+          handledStep = true;
+        } else if (executiveOverride && node.id === executiveOverride.node_id) {
+          stepResult = buildExecutiveOverrideNodeOutput(
+            nodeType,
+            executiveOverride.corrected_payload,
+          );
+          context[node.id] = stepResult;
+          executionLog.push({
+            nodeId: node.id,
+            type: nodeType,
+            status: "executive_override",
+          });
+          console.info(
+            `[${node.id}] EXECUTIVE OVERRIDE — sub-agent halted; CEO payload accepted`,
+            { reason: executiveOverride.reason },
+          );
+          handledStep = true;
+        }
+
+        if (!handledStep) {
         switch (nodeType) {
           case "trigger": {
             const leadEmail =
@@ -1545,6 +1616,7 @@ serve(async (req) => {
             break;
           }
         }
+        }
 
         await insertStepLog(supabaseAdmin, {
           executionId,
@@ -1585,6 +1657,12 @@ serve(async (req) => {
         executionLog,
         executionId,
         sortedNodeIds: sortedNodes.map((n) => n.id),
+        executiveOverride: executiveOverride
+          ? {
+              node_id: executiveOverride.node_id,
+              reason: executiveOverride.reason,
+            }
+          : null,
         safemode: { testEmail, apolloLive: useLiveApollo },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

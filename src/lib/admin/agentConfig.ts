@@ -36,6 +36,13 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     scopes: ["ceo"],
   },
   {
+    id: "executive_override",
+    label: "Executive Override",
+    description:
+      "Halt a failing DAG step and inject CEO-corrected payload to force the pipeline forward.",
+    scopes: ["ceo"],
+  },
+  {
     id: "hire_sub_agent",
     label: "Hire Sub-Agents",
     description: "Dynamically create specialized sub-agents for the workspace.",
@@ -84,6 +91,7 @@ const CEO_DEFAULT_SKILLS = [
   "write_knowledge_vault",
   "build_automation",
   "delegate_sub_agent",
+  "executive_override",
 ] as const;
 
 const SUB_AGENT_DEFAULT_SKILLS = ["web_search", "apollo_scrape"] as const;
@@ -247,6 +255,7 @@ const CEO_SKILL_TOOL_MAP: Record<string, string> = {
   read_knowledge_vault: "search_client_knowledge",
   write_knowledge_vault: "save_to_knowledge_vault",
   build_automation: "build_and_run_automation",
+  executive_override: "execute_executive_override",
   hire_sub_agent: "hireSubAgent",
   trigger_outbound_campaign: "triggerOutboundCampaign",
   configure_automated_sequence: "configureAutomatedSequence",
