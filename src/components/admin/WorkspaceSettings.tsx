@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { DeleteWorkspaceDialog } from "@/components/admin/DeleteWorkspaceDialog";
 import type { ClientRow } from "@/lib/admin/clientsRepository";
 import { supabase } from "@/lib/supabase";
 import { useClientRoute } from "./ClientRouteContext";
@@ -33,6 +34,7 @@ export function WorkspaceSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!clientId) {
@@ -107,8 +109,11 @@ export function WorkspaceSettings() {
     return <p className="text-sm text-gray-500">Settings unavailable for this client.</p>;
   }
 
+  const workspaceName = client.company_name?.trim() || "Unnamed workspace";
+
   return (
-    <section className="space-y-8">
+    <>
+      <section className="space-y-8">
       <header className="border-b border-gray-200 pb-8">
         <h1 className="text-3xl font-bold text-gray-900">Agent Grounding</h1>
         <p className="mt-2 text-sm text-gray-500">
@@ -155,6 +160,38 @@ export function WorkspaceSettings() {
           {isSaving ? "Saving…" : "Save Configuration"}
         </button>
       </div>
+
+      <section className="border border-hairline bg-paper">
+        <div className="border-b border-hairline px-6 py-5">
+          <p className="font-mono text-[10px] tracking-[0.28em] text-[#c03939] uppercase">
+            Danger zone
+          </p>
+          <h2 className="mt-2 font-display text-xl leading-[0.95] tracking-[-0.03em] text-ink uppercase">
+            Delete this workspace
+          </h2>
+          <p className="mt-3 max-w-xl font-mono text-[11px] leading-relaxed tracking-[0.06em] text-ink-soft">
+            Permanently remove {workspaceName} and wipe all agents, campaigns, and logs tied to
+            this client. This action cannot be reversed.
+          </p>
+        </div>
+        <div className="px-6 py-5">
+          <button
+            type="button"
+            onClick={() => setDeleteDialogOpen(true)}
+            className="border border-[#c03939] px-5 py-3 font-mono text-[10px] tracking-[0.18em] uppercase text-[#c03939] transition-colors hover:bg-[#c03939] hover:text-paper"
+          >
+            Delete workspace
+          </button>
+        </div>
+      </section>
     </section>
+
+      <DeleteWorkspaceDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        clientId={clientId}
+        workspaceName={workspaceName}
+      />
+    </>
   );
 }
