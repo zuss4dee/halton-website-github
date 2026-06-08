@@ -4,6 +4,7 @@ import {
   interpolateLeadMergeVariables,
   leadRowToMergeFields,
 } from "@/lib/outbound/leadMergeVariables";
+import { appendOutboundFounderSignature } from "@/lib/outbound/outboundSignature";
 
 export type OutboundSendRequest = {
   lead_id: string;
@@ -75,7 +76,9 @@ export async function sendOutboundEmail(
 
   const mergeFields = leadRowToMergeFields(lead as Record<string, unknown>);
   const personalizedSubject = interpolateLeadMergeVariables(subject, mergeFields);
-  const personalizedBody = interpolateLeadMergeVariables(body, mergeFields);
+  const personalizedBody = appendOutboundFounderSignature(
+    interpolateLeadMergeVariables(body, mergeFields),
+  );
 
   const resend = new Resend(resendApiKey);
 

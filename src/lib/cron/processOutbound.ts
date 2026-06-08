@@ -5,6 +5,7 @@ import {
   type ClientSendingConfig,
 } from "@/lib/outbound/resolveClientFromEmail";
 import { interpolateLeadMergeVariables, leadRowToMergeFields } from "@/lib/outbound/leadMergeVariables";
+import { appendOutboundFounderSignature } from "@/lib/outbound/outboundSignature";
 
 let supabaseClient: ReturnType<typeof createClient> | undefined;
 let resendClient: Resend | undefined;
@@ -147,7 +148,9 @@ export async function processOutboundQueue(options?: { clientId?: string }) {
 
       const mergeFields = leadRowToMergeFields(lead as Record<string, unknown>);
       const personalizedSubject = interpolateLeadMergeVariables(sequenceStep.subject, mergeFields);
-      const personalizedBody = interpolateLeadMergeVariables(sequenceStep.body, mergeFields);
+      const personalizedBody = appendOutboundFounderSignature(
+        interpolateLeadMergeVariables(sequenceStep.body, mergeFields),
+      );
 
       const emailResponse = await getResend().emails.send({
         from: fromEmail,

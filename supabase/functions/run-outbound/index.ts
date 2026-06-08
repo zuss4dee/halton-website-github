@@ -11,6 +11,7 @@ import {
   mergeLeadMergeFields,
   type LeadMergeFields,
 } from "../_shared/leadMergeVariables.ts";
+import { appendOutboundFounderSignature } from "../_shared/outboundSignature.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -906,11 +907,12 @@ async function runResend(
   textBody: string,
   meta?: { nodeId?: string; intendedRecipient?: string },
 ): Promise<{ messageId: string; to: string; subject: string; format: "text" }> {
+  const signedBody = appendOutboundFounderSignature(textBody);
   const requestBody = {
     from: "Damilare Adeosun <damilare@haltonworks.com>",
     to,
     subject,
-    text: textBody,
+    text: signedBody,
     tags: [{ name: "category", value: "cold_outreach" }],
     headers: {
       "X-Resend-Open-Tracking": "false",
@@ -952,7 +954,7 @@ async function runResend(
       request: {
         to: requestBody.to,
         subject: requestBody.subject,
-        textLength: textBody.length,
+        textLength: signedBody.length,
       },
     });
     const message =
@@ -1133,7 +1135,7 @@ serve(async (req) => {
           .update({
             queue_status: "sent",
             campaign_status: "SENT",
-            generated_copy: personalizedBody,
+            generated_copy: appendOutboundFounderSignature(personalizedBody),
             sent_at: new Date().toISOString(),
           })
           .eq("id", leadId)
