@@ -5,6 +5,12 @@ import {
   resolveVaultKeys,
   type VaultKeys,
 } from "../_shared/vaultKeys.ts";
+import {
+  interpolateLeadMergeVariables,
+  leadRowToMergeFields,
+  mergeLeadMergeFields,
+  type LeadMergeFields,
+} from "../_shared/leadMergeVariables.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -819,6 +825,80 @@ async function assertLeadApprovedForSend(
   };
 }
 
+async function fetchLeadMergeFieldsFromDb(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  email: string,
+): Promise<LeadMergeFields | null> {
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .select("prospect_name, company_name, target_company, target_role, email, form_data")
+    .eq("client_id", clientId)
+    .eq("email", email.trim())
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return leadRowToMergeFields(data as Record<string, unknown>);
+}
+
+function mergeFieldsFromExecutionContext(
+  context: ExecutionContext,
+  sortedNodes: FlowNode[],
+  recipientEmail: string,
+): LeadMergeFields {
+  const apolloLead = findApolloLead(context, sortedNodes);
+  const triggerNode = sortedNodes.find((candidate) => candidate.type === "trigger");
+  const triggerCtx =
+    triggerNode &&
+    context[triggerNode.id] &&
+    typeof context[triggerNode.id] === "object"
+      ? (context[triggerNode.id] as Record<string, unknown>)
+      : null;
+
+  const firstName =
+    apolloLead?.first_name ??
+    (typeof triggerCtx?.first_name === "string" ? triggerCtx.first_name : undefined);
+  const lastName =
+    apolloLead?.last_name ??
+    (typeof triggerCtx?.last_name === "string" ? triggerCtx.last_name : undefined);
+  const company =
+    apolloLead?.company ??
+    (typeof triggerCtx?.company === "string" ? triggerCtx.company : undefined);
+  const title =
+    apolloLead?.title ??
+    (typeof triggerCtx?.title === "string" ? triggerCtx.title : undefined);
+
+  const prospectName =
+    firstName && lastName ? `${firstName} ${lastName}`.trim() : firstName || undefined;
+
+  return {
+    first_name: firstName,
+    last_name: lastName,
+    prospect_name: prospectName,
+    company,
+    target_company: company,
+    target_role: title,
+    title,
+    email: recipientEmail,
+  };
+}
+
+async function resolveLeadMergeFieldsForSend(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  recipientEmail: string,
+  context?: ExecutionContext,
+  sortedNodes?: FlowNode[],
+): Promise<LeadMergeFields> {
+  const fromContext =
+    context && sortedNodes
+      ? mergeFieldsFromExecutionContext(context, sortedNodes, recipientEmail)
+      : { email: recipientEmail };
+
+  const fromDb = await fetchLeadMergeFieldsFromDb(supabaseAdmin, clientId, recipientEmail);
+  return mergeLeadMergeFields(fromDb, fromContext);
+}
+
 async function runResend(
   keys: VaultKeys,
   to: string,
@@ -1005,10 +1085,14 @@ serve(async (req) => {
         throw new Error("send_approved: Missing body (approved copy)");
       }
 
+      let mergeFields: LeadMergeFields;
+
       if (leadId) {
         const { data: leadRow, error: leadFetchError } = await supabaseAdmin
           .from("leads")
-          .select("queue_status")
+          .select(
+            "queue_status, prospect_name, company_name, target_company, target_role, email, form_data",
+          )
           .eq("id", leadId)
           .eq("client_id", clientId)
           .maybeSingle();
@@ -1024,10 +1108,24 @@ serve(async (req) => {
             `send_approved: Lead not approved (status: ${leadRow.queue_status ?? "unknown"})`,
           );
         }
+
+        mergeFields = mergeLeadMergeFields(
+          leadRowToMergeFields(leadRow as Record<string, unknown>),
+          { email: recipientEmail },
+        );
+      } else {
+        mergeFields = await resolveLeadMergeFieldsForSend(
+          supabaseAdmin,
+          clientId,
+          recipientEmail,
+        );
       }
 
-      const subject = `[SANDBOX: ${recipientEmail}] ${originalSubject}`;
-      const resendResult = await runResend(keys, SANDBOX_TO_EMAIL, subject, textBody);
+      const personalizedBody = interpolateLeadMergeVariables(textBody, mergeFields);
+      const personalizedSubject = interpolateLeadMergeVariables(originalSubject, mergeFields);
+      const subject = `[SANDBOX: ${recipientEmail}] ${personalizedSubject}`;
+
+      const resendResult = await runResend(keys, SANDBOX_TO_EMAIL, subject, personalizedBody);
 
       if (leadId) {
         const { error: leadUpdateError } = await supabaseAdmin
@@ -1035,7 +1133,7 @@ serve(async (req) => {
           .update({
             queue_status: "sent",
             campaign_status: "SENT",
-            generated_copy: textBody,
+            generated_copy: personalizedBody,
             sent_at: new Date().toISOString(),
           })
           .eq("id", leadId)
@@ -1402,13 +1500,24 @@ serve(async (req) => {
               break;
             }
 
-            const subject = `[SANDBOX: ${intendedRecipient}] ${subjectBase}`;
+            const mergeFields = await resolveLeadMergeFieldsForSend(
+              supabaseAdmin,
+              clientId,
+              intendedRecipient,
+              context,
+              sortedNodes,
+            );
+            const personalizedBody = interpolateLeadMergeVariables(bodyText, mergeFields);
+            const subject = `[SANDBOX: ${intendedRecipient}] ${interpolateLeadMergeVariables(
+              subjectBase,
+              mergeFields,
+            )}`;
 
             const resendResult = await runResend(
               keys,
               SANDBOX_TO_EMAIL,
               subject,
-              bodyText,
+              personalizedBody,
               { nodeId: node.id, intendedRecipient },
             );
 

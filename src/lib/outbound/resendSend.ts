@@ -1,5 +1,9 @@
 import { Resend } from "resend";
 import { createSupabaseServer } from "@/lib/supabase-server";
+import {
+  interpolateLeadMergeVariables,
+  leadRowToMergeFields,
+} from "@/lib/outbound/leadMergeVariables";
 
 export type OutboundSendRequest = {
   lead_id: string;
@@ -52,7 +56,7 @@ export async function sendOutboundEmail(
 
   const { data: lead, error: leadLookupError } = await supabase
     .from("leads")
-    .select("id, client_id, email")
+    .select("id, client_id, email, prospect_name, company_name, target_company, target_role, form_data")
     .eq("id", leadId)
     .maybeSingle();
 
@@ -69,13 +73,17 @@ export async function sendOutboundEmail(
     return { ok: false, status: 403, error: "Lead does not belong to this client." };
   }
 
+  const mergeFields = leadRowToMergeFields(lead as Record<string, unknown>);
+  const personalizedSubject = interpolateLeadMergeVariables(subject, mergeFields);
+  const personalizedBody = interpolateLeadMergeVariables(body, mergeFields);
+
   const resend = new Resend(resendApiKey);
 
   const { data: sendData, error: sendError } = await resend.emails.send({
     from: resolveFromEmail(),
     to: recipientEmail,
-    subject,
-    text: body,
+    subject: personalizedSubject,
+    text: personalizedBody,
   });
 
   if (sendError || !sendData?.id) {
@@ -105,7 +113,7 @@ export async function sendOutboundEmail(
       sent_at: now,
       queue_status: "sent",
       campaign_status: "SENT",
-      generated_copy: body,
+      generated_copy: personalizedBody,
     })
     .eq("id", leadId);
 

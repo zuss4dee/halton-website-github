@@ -4,6 +4,7 @@ import {
   resolveClientFromEmail,
   type ClientSendingConfig,
 } from "@/lib/outbound/resolveClientFromEmail";
+import { interpolateLeadMergeVariables, leadRowToMergeFields } from "@/lib/outbound/leadMergeVariables";
 
 let supabaseClient: ReturnType<typeof createClient> | undefined;
 let resendClient: Resend | undefined;
@@ -144,20 +145,9 @@ export async function processOutboundQueue(options?: { clientId?: string }) {
         continue;
       }
 
-      const firstName = lead.first_name || lead.prospect_name || "there";
-      const companyName = lead.company_name || lead.company || lead.target_company || "";
-
-      const personalizedSubject = sequenceStep.subject
-        .replace(/{{first_name}}/g, firstName)
-        .replace(/{{prospect_name}}/g, firstName)
-        .replace(/{{company_name}}/g, companyName)
-        .replace(/{{company}}/g, companyName);
-
-      const personalizedBody = sequenceStep.body
-        .replace(/{{first_name}}/g, firstName)
-        .replace(/{{prospect_name}}/g, firstName)
-        .replace(/{{company_name}}/g, companyName)
-        .replace(/{{company}}/g, companyName);
+      const mergeFields = leadRowToMergeFields(lead as Record<string, unknown>);
+      const personalizedSubject = interpolateLeadMergeVariables(sequenceStep.subject, mergeFields);
+      const personalizedBody = interpolateLeadMergeVariables(sequenceStep.body, mergeFields);
 
       const emailResponse = await getResend().emails.send({
         from: fromEmail,
