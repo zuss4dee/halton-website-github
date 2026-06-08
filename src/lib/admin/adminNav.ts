@@ -6,6 +6,7 @@ export type GlobalNavItem = {
 export type WorkspaceNavSegment =
   | "global"
   | "dashboard"
+  | "leads"
   | "orchestration"
   | "vault"
   | "workflow"
@@ -28,6 +29,7 @@ export const GLOBAL_NAV: GlobalNavItem[] = [
 
 export const WORKSPACE_NAV: WorkspaceNavItem[] = [
   { label: "01 // DASHBOARD", segment: "dashboard" },
+  { label: "01b // LEADS CRM", segment: "leads" },
   { label: "< Return to Global", segment: "global" },
   { label: "02 // CLIENT ASSETS", segment: "vault" },
   { label: "03 // CAMPAIGN RULES", segment: "workflow" },

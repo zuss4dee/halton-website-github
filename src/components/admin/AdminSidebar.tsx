@@ -14,6 +14,7 @@ const WORKSPACE_SIDEBAR_LINKS: {
   segment: Exclude<WorkspaceNavSegment, "global" | "dashboard">;
   attention?: "pendingDrafts";
 }[] = [
+  { label: "01b // LEADS CRM", segment: "leads" },
   { label: "04 // ACTIVE PIPELINE", segment: "outbound", attention: "pendingDrafts" },
   { label: "02 // CLIENT ASSETS", segment: "vault" },
   { label: "03 // CAMPAIGN RULES", segment: "workflow" },

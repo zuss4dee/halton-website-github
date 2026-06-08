@@ -1,15 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useClientRoute } from "@/components/admin/ClientRouteContext";
-import { WorkspaceLeadPipeline } from "@/components/admin/WorkspaceLeadPipeline";
+import { WorkspaceLeadsCrm } from "@/components/admin/WorkspaceLeadsCrm";
 
 export const Route = createFileRoute("/admin/client/$id/leads")({
   head: ({ params }) => ({
-    meta: [{ title: `Halton/Works — Lead Pipeline ${params.id}` }],
+    meta: [{ title: `Halton/Works — Leads CRM ${params.id}` }],
   }),
-  component: ClientLeadsPage,
+  component: ClientLeadsCrmPage,
 });
 
-function ClientLeadsPage() {
+function ClientLeadsCrmPage() {
   const client = useClientRoute();
 
   if (!client.id) {
@@ -20,5 +20,10 @@ function ClientLeadsPage() {
     );
   }
 
-  return <WorkspaceLeadPipeline clientId={client.id} />;
+  return (
+    <WorkspaceLeadsCrm
+      clientId={client.id}
+      companyName={client.company_name ?? undefined}
+    />
+  );
 }
