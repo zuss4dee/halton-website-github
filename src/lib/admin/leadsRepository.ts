@@ -64,7 +64,7 @@ export type LeadRow = {
   current_step?: number | null;
   current_sequence_step?: number | null;
   next_send_date?: string | null;
-  /** @deprecated legacy column */
+  /** @deprecated Not a DB column — use target_company */
   company_name?: string | null;
   /** @deprecated legacy column */
   role?: string | null;

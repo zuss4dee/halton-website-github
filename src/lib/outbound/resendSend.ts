@@ -57,7 +57,7 @@ export async function sendOutboundEmail(
 
   const { data: lead, error: leadLookupError } = await supabase
     .from("leads")
-    .select("id, client_id, email, prospect_name, company_name, target_company, target_role, form_data")
+    .select("id, client_id, email, prospect_name, target_company, target_role, form_data")
     .eq("id", leadId)
     .maybeSingle();
 

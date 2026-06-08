@@ -46,8 +46,7 @@ function splitProspectName(prospectName: string | null | undefined): {
 
 function mapLeadRowToCrmRecord(row: LeadRow): CrmLeadRecord {
   const { first_name, last_name } = splitProspectName(row.prospect_name);
-  const company =
-    row.target_company?.trim() || row.company_name?.trim() || "—";
+  const company = row.target_company?.trim() || "—";
   const status = resolveCrmStatusBadge(row).label;
 
   return {
@@ -80,11 +79,11 @@ export async function fetchCrmLeadsForWorkspace(
   const { data, error } = await supabase
     .from("leads")
     .select(
-      "id, email, prospect_name, target_company, company_name, queue_status, status, email_status, current_sequence_step, sent_at, last_activity, created_at",
+      "id, email, prospect_name, target_company, queue_status, status, email_status, current_sequence_step, sent_at, last_activity, created_at",
     )
     .eq("client_id", clientId)
     .or(
-      `email.ilike.${pattern},prospect_name.ilike.${pattern},target_company.ilike.${pattern},company_name.ilike.${pattern}`,
+      `email.ilike.${pattern},prospect_name.ilike.${pattern},target_company.ilike.${pattern}`,
     )
     .order("last_activity", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })

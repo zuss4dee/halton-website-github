@@ -837,7 +837,7 @@ async function fetchLeadMergeFieldsFromDb(
 ): Promise<LeadMergeFields | null> {
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .select("prospect_name, company_name, target_company, target_role, email, form_data")
+    .select("prospect_name, target_company, target_role, email, form_data")
     .eq("client_id", clientId)
     .eq("email", email.trim())
     .maybeSingle();
@@ -1097,7 +1097,7 @@ serve(async (req) => {
         const { data: leadRow, error: leadFetchError } = await supabaseAdmin
           .from("leads")
           .select(
-            "queue_status, prospect_name, company_name, target_company, target_role, email, form_data",
+            "queue_status, prospect_name, target_company, target_role, email, form_data",
           )
           .eq("id", leadId)
           .eq("client_id", clientId)
