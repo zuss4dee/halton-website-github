@@ -30,6 +30,7 @@ import { buildCronAuthHeaders, getCronSecret } from "@/lib/cron/cronAuth";
 import { processOutboundQueue } from "@/lib/cron/processOutbound";
 import {
   buildCeoLlmSystemMessage,
+  CEO_AUTONOMY_RULES,
   fetchWorkspaceCeoAgent,
   fetchWorkspaceCeoSystemPrompt,
   resolveAgentForWorkspaceServer,
@@ -186,10 +187,9 @@ Parameters: node_id (failed step id from execution log), corrected_payload (your
 When overriding copy_reviewer, your payload is treated as QA-approved and flows directly to approval_gate/resend.
 `;
 
-  const crmLeadDirective = `
---- LEADS CRM (FETCH_CRM_LEAD) ---
-If the user asks you to email a specific lead by name, use your fetch_crm_lead tool to retrieve their exact email address and company details from the database before building the automation.
-Search by name, email, or company. Results are scoped strictly to the active workspace.
+  const autonomyDirective = `
+--- AUTONOMY & DATA FETCHING (STRICT) ---
+${CEO_AUTONOMY_RULES}
 `;
 
   await logInsert(executionId, clientId, ceoAgent.id, "SPAWN", {
@@ -1283,7 +1283,7 @@ Search by name, email, or company. Results are scoped strictly to the active wor
       knowledgeVaultDirective,
       emailDagDirective,
       executiveOverrideDirective,
-      crmLeadDirective,
+      autonomyDirective,
     }),
     prompt,
     tools: ceoTools,

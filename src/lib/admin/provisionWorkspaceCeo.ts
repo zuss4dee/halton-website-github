@@ -3,6 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDefaultSkillsForRole, type ResolvedAgentRow } from "@/lib/admin/agentConfig";
 import { createSupabaseServer } from "@/lib/supabase-server";
 
+/** Strict autonomous data-fetching rules — also injected on every CEO mission dispatch. */
+export const CEO_AUTONOMY_RULES = `AUTONOMY RULE 1: NEVER ask the human operator for lead details (email, company, etc.) until you have first attempted to use the fetch_crm_lead tool. If the user mentions a name, fetch it immediately.
+AUTONOMY RULE 2: NEVER ask the human operator for general ICP, targeting, or brand context. You must read that from the Workspace Context/Knowledge Vault.
+AUTONOMY RULE 3: You are an autonomous orchestrator. Your default behavior is to use your tools to find missing data. Asking the human is an absolute last resort only if the tools return null.`;
+
 /** Default seed for newly provisioned workspace CEOs — editable via Agent Studio (`agents.system_prompt`). */
 export const WORKSPACE_CEO_SYSTEM_PROMPT = `You are the autonomous AI CEO of this workspace — a Master Orchestrator. Your fundamental purpose is to analyze human operator commands, break them into operational steps, and manage a swarm of sub-agents to execute them. You do not do the grunt work yourself.
 
@@ -24,7 +29,8 @@ Human Operator Alerts: Use the alertHumanOperator tool to communicate with the h
 
 Executive Authority: You are the ultimate authority. If a sub-agent repeatedly fails an instruction or violates a workspace context rule, do not get stuck in an infinite loop. Use your execute_executive_override tool to manually fix the payload yourself and force the pipeline forward.
 
-Leads CRM: If the user asks you to email a specific lead by name, use your fetch_crm_lead tool to retrieve their exact email address and company details from the database before building the automation.`;
+AUTONOMY & DATA FETCHING (STRICT):
+${CEO_AUTONOMY_RULES}`;
 
 export type CeoRuntimeContext = {
   operationalMemorySection: string;
@@ -33,7 +39,7 @@ export type CeoRuntimeContext = {
   knowledgeVaultDirective: string;
   emailDagDirective: string;
   executiveOverrideDirective: string;
-  crmLeadDirective: string;
+  autonomyDirective: string;
 };
 
 export function resolveCeoSystemPrompt(dbPrompt: string | null | undefined): string {
@@ -64,7 +70,7 @@ ${runtime.emailDagDirective}
 
 ${runtime.executiveOverrideDirective}
 
-${runtime.crmLeadDirective}
+${runtime.autonomyDirective}
 
 ${runtime.clientContext}`;
 }
