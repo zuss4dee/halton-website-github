@@ -55,5 +55,5 @@ export function getAgentStatus(
     return { label: "Working", tone: "working" };
   }
 
-  return { label: "Standby", tone: "standby" };
+  return { label: "Online", tone: "online" };
 }

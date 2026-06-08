@@ -7,9 +7,9 @@ import {
   shouldOfferQuickReply,
   type TerminalReplyContext,
 } from "@/lib/admin/terminalReply";
-import { dispatchAgentActivity } from "@/lib/admin/agentActivity";
+import { dispatchAgentActivity, dispatchAgentMissionState } from "@/lib/admin/agentActivity";
 import { resolveAgentForWorkspace, type ResolvedAgentRow } from "@/lib/admin/agentConfig";
-import { resolveActivityRoleFromLog } from "@/lib/admin/resolveAgentActivityRole";
+import { resolveActivityRolesFromLog } from "@/lib/admin/resolveAgentActivityRole";
 import { supabase } from "@/lib/supabase";
 
 function formatLogTimestamp(createdAt?: string): string {
@@ -58,8 +58,8 @@ function resolveAgentLabel(agentId: string | undefined, agents: AgentRosterRow[]
 }
 
 function emitAgentActivityForLog(log: AgentLogRow, agents: AgentRosterRow[]) {
-  const role = resolveActivityRoleFromLog(log, agents);
-  if (role) {
+  const roles = resolveActivityRolesFromLog(log, agents);
+  for (const role of roles) {
     dispatchAgentActivity(role);
   }
 }
@@ -250,7 +250,11 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
       if (cancelled) return;
 
       if (historicalLogs) {
-        setTelemetryLogs(historicalLogs as AgentLogRow[]);
+        const rows = historicalLogs as AgentLogRow[];
+        setTelemetryLogs(rows);
+        for (const log of rows) {
+          emitAgentActivityForLog(log, agents);
+        }
       }
     };
 
@@ -259,7 +263,19 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [agents, clientId]);
+
+  useEffect(() => {
+    dispatchAgentMissionState(isExecuting);
+  }, [isExecuting]);
+
+  useEffect(() => {
+    if (!isExecuting || telemetryLogs.length === 0) return;
+
+    for (const log of telemetryLogs) {
+      emitAgentActivityForLog(log, agents);
+    }
+  }, [agents, isExecuting, telemetryLogs]);
 
   useEffect(() => {
     if (!executionId || !clientId) return;

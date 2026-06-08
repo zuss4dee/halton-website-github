@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   AGENT_ACTIVITY_EVENT,
+  AGENT_MISSION_EVENT,
   normalizeAgentRole,
   type AgentActivityDetail,
+  type AgentMissionDetail,
 } from "@/lib/admin/agentActivity";
 import { getAgentStatus } from "@/lib/admin/agentStatus";
 import { AgentStatusBadge } from "@/components/admin/AgentStatusBadge";
@@ -16,7 +18,8 @@ type AgentRosterProps = {
   isLoading: boolean;
 };
 
-const ACTIVITY_IDLE_MS = 1500;
+const ACTIVITY_IDLE_MS = 90_000;
+const MISSION_ACTIVITY_IDLE_MS = 300_000;
 
 function AgentRosterSkeleton() {
   return (
@@ -113,10 +116,16 @@ export function AgentRoster({
   isLoading,
 }: AgentRosterProps) {
   const [activeRoles, setActiveRoles] = useState<Record<string, true>>({});
+  const [missionActive, setMissionActive] = useState(false);
   const idleTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const missionActiveRef = useRef(false);
 
   useEffect(() => {
-    const markRoleActive = (role: string) => {
+    missionActiveRef.current = missionActive;
+  }, [missionActive]);
+
+  useEffect(() => {
+    const markRoleActive = (role: string, holdMs?: number) => {
       const normalized = normalizeAgentRole(role);
       if (!normalized || normalized === "CEO" || normalized === "CEO_ROUTER") {
         return;
@@ -131,6 +140,10 @@ export function AgentRoster({
         clearTimeout(existingTimeout);
       }
 
+      const idleMs =
+        holdMs ??
+        (missionActiveRef.current ? MISSION_ACTIVITY_IDLE_MS : ACTIVITY_IDLE_MS);
+
       const timeout = setTimeout(() => {
         idleTimeoutsRef.current.delete(normalized);
         setActiveRoles((current) => {
@@ -139,7 +152,7 @@ export function AgentRoster({
           delete next[normalized];
           return next;
         });
-      }, ACTIVITY_IDLE_MS);
+      }, idleMs);
 
       idleTimeoutsRef.current.set(normalized, timeout);
     };
@@ -147,13 +160,20 @@ export function AgentRoster({
     const handleAgentActivity = (event: Event) => {
       const detail = (event as CustomEvent<AgentActivityDetail>).detail;
       if (!detail?.role) return;
-      markRoleActive(detail.role);
+      markRoleActive(detail.role, detail.holdMs);
+    };
+
+    const handleMissionState = (event: Event) => {
+      const detail = (event as CustomEvent<AgentMissionDetail>).detail;
+      setMissionActive(Boolean(detail?.active));
     };
 
     window.addEventListener(AGENT_ACTIVITY_EVENT, handleAgentActivity);
+    window.addEventListener(AGENT_MISSION_EVENT, handleMissionState);
 
     return () => {
       window.removeEventListener(AGENT_ACTIVITY_EVENT, handleAgentActivity);
+      window.removeEventListener(AGENT_MISSION_EVENT, handleMissionState);
       for (const timeout of idleTimeoutsRef.current.values()) {
         clearTimeout(timeout);
       }
