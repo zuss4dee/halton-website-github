@@ -30,6 +30,7 @@ export type ClientRow = {
   target_icp?: string | null;
   case_studies?: string | null;
   tone_of_voice?: string | null;
+  sequence_status?: string | null;
   created_at?: string | null;
 };
 

@@ -79,10 +79,43 @@ export async function processOutboundQueue(options?: { clientId?: string }) {
   }
 
   const clientConfigCache = new Map<string, ClientSendingConfig | null>();
+  const sequenceStatusCache = new Map<string, string>();
   let processedCount = 0;
 
   for (const lead of leads) {
     try {
+      const clientId = lead.client_id as string | null;
+      if (!clientId) {
+        console.error(`Lead ${lead.id} is missing client_id.`);
+        continue;
+      }
+
+      let sequenceStatus = sequenceStatusCache.get(clientId);
+      if (sequenceStatus === undefined) {
+        const { data: clientRow, error: clientStatusError } = await getCronSupabase()
+          .from("clients")
+          .select("sequence_status")
+          .eq("id", clientId)
+          .maybeSingle();
+
+        if (clientStatusError) {
+          console.error(
+            `[cron/process-outbound] sequence_status lookup failed for ${clientId}:`,
+            clientStatusError,
+          );
+          continue;
+        }
+
+        sequenceStatus = (clientRow as { sequence_status?: string | null } | null)
+          ?.sequence_status?.trim()
+          .toLowerCase() ?? "active";
+        sequenceStatusCache.set(clientId, sequenceStatus);
+      }
+
+      if (sequenceStatus === "paused" || sequenceStatus === "stopped") {
+        continue;
+      }
+
       const { data: sequenceStep, error: seqError } = await getCronSupabase()
         .from("campaign_sequences")
         .select("*")
@@ -94,12 +127,6 @@ export async function processOutboundQueue(options?: { clientId?: string }) {
         console.error(
           `No sequence step ${lead.current_sequence_step} found for client ${lead.client_id}`,
         );
-        continue;
-      }
-
-      const clientId = lead.client_id as string | null;
-      if (!clientId) {
-        console.error(`Lead ${lead.id} is missing client_id.`);
         continue;
       }
 
