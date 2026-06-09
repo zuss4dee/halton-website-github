@@ -1,8 +1,8 @@
 import { Resend } from "resend";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import {
-  interpolateLeadMergeVariables,
   leadRowToMergeFields,
+  personalizeOutboundEmailContent,
 } from "@/lib/outbound/leadMergeVariables";
 import { appendOutboundFounderSignature } from "@/lib/outbound/outboundSignature";
 
@@ -75,10 +75,9 @@ export async function sendOutboundEmail(
   }
 
   const mergeFields = leadRowToMergeFields(lead as Record<string, unknown>);
-  const personalizedSubject = interpolateLeadMergeVariables(subject, mergeFields);
-  const personalizedBody = appendOutboundFounderSignature(
-    interpolateLeadMergeVariables(body, mergeFields),
-  );
+  const { subject: personalizedSubject, body: personalizedBodyRaw } =
+    personalizeOutboundEmailContent(subject, body, mergeFields);
+  const personalizedBody = appendOutboundFounderSignature(personalizedBodyRaw);
 
   const resend = new Resend(resendApiKey);
 

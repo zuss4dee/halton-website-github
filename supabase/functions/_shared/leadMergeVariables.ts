@@ -67,6 +67,18 @@ export function interpolateLeadMergeVariables(
   });
 }
 
+/** Apply lead merge interpolation to both subject and body before Resend dispatch. */
+export function personalizeOutboundEmailContent(
+  subject: string,
+  body: string,
+  mergeFields: LeadMergeFields,
+): { subject: string; body: string } {
+  return {
+    subject: interpolateLeadMergeVariables(subject, mergeFields),
+    body: interpolateLeadMergeVariables(body, mergeFields),
+  };
+}
+
 export function mergeLeadMergeFields(
   ...sources: Array<LeadMergeFields | null | undefined>
 ): LeadMergeFields {

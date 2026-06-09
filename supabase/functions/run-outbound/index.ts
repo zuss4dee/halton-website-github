@@ -9,6 +9,7 @@ import {
   interpolateLeadMergeVariables,
   leadRowToMergeFields,
   mergeLeadMergeFields,
+  personalizeOutboundEmailContent,
   type LeadMergeFields,
 } from "../_shared/leadMergeVariables.ts";
 import { appendOutboundFounderSignature } from "../_shared/outboundSignature.ts";
@@ -75,7 +76,7 @@ Rules:
 const DEFAULT_DEEPSEEK_PROMPT =
   "Write a casual, 2-sentence cold email opening line to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Acknowledge their role and ask if they are currently taking on new clients. Do not include placeholders or signature blocks.";
 
-const DEFAULT_RESEND_SUBJECT = "Quick question for {{steps.APOLLO_NODE.company}}";
+const DEFAULT_RESEND_SUBJECT = "Quick question for {{company_name}}";
 const DEFAULT_RESEND_BODY = "{{steps.REVIEWER_NODE.copy}}\n\nLet's chat.\n- Damilare";
 
 /** Sandbox mode: all outbound sends route here during testing — never to real leads. */
@@ -316,6 +317,17 @@ function resolveSanitizedEmailBody(
   }
 
   return body;
+}
+
+/** Subject: merge tags first, then DAG step refs, then merge again (matches body tag handling). */
+function personalizeSubjectForSend(
+  rawSubject: string,
+  context: ExecutionContext,
+  mergeFields: LeadMergeFields,
+): string {
+  let subject = interpolateLeadMergeVariables(rawSubject, mergeFields);
+  subject = interpolate(subject, context);
+  return interpolateLeadMergeVariables(subject, mergeFields);
 }
 
 function findApolloLead(
@@ -909,13 +921,16 @@ async function runResend(
   to: string,
   subject: string,
   textBody: string,
-  meta?: { nodeId?: string; intendedRecipient?: string },
+  meta?: { nodeId?: string; intendedRecipient?: string; mergeFields?: LeadMergeFields },
 ): Promise<{ messageId: string; to: string; subject: string; format: "text" }> {
-  const signedBody = appendOutboundFounderSignature(textBody);
+  const personalized = meta?.mergeFields
+    ? personalizeOutboundEmailContent(subject, textBody, meta.mergeFields)
+    : { subject, body: textBody };
+  const signedBody = appendOutboundFounderSignature(personalized.body);
   const requestBody = {
     from: "Damilare Adeosun <damilare@haltonworks.com>",
     to,
-    subject,
+    subject: personalized.subject,
     text: signedBody,
     tags: [{ name: "category", value: "cold_outreach" }],
     headers: {
@@ -1127,11 +1142,16 @@ serve(async (req) => {
         );
       }
 
-      const personalizedBody = interpolateLeadMergeVariables(textBody, mergeFields);
-      const personalizedSubject = interpolateLeadMergeVariables(originalSubject, mergeFields);
-      const subject = `[SANDBOX: ${recipientEmail}] ${personalizedSubject}`;
+      const subject = `[SANDBOX: ${recipientEmail}] ${originalSubject}`;
 
-      const resendResult = await runResend(keys, SANDBOX_TO_EMAIL, subject, personalizedBody);
+      const resendResult = await runResend(keys, SANDBOX_TO_EMAIL, subject, textBody, {
+        mergeFields,
+      });
+      const personalizedBody = personalizeOutboundEmailContent(
+        originalSubject,
+        textBody,
+        mergeFields,
+      ).body;
 
       if (leadId) {
         const { error: leadUpdateError } = await supabaseAdmin
@@ -1486,7 +1506,7 @@ serve(async (req) => {
                 client_id: clientId,
                 email: leadEmail,
                 prospect_name: prospectName,
-                target_company: lead?.company ?? "Unknown Company",
+                target_company: lead?.company?.trim() || null,
                 target_role: lead?.title ?? null,
                 generated_copy: bodyText,
                 campaign_status: "PENDING_REVIEW",
@@ -1539,7 +1559,6 @@ serve(async (req) => {
 
             const bodyText = resolveSanitizedEmailBody(node, sortedNodes, context);
             const rawSubject = getNodeDataString(node, "subject", DEFAULT_RESEND_SUBJECT);
-            const subjectBase = interpolate(rawSubject, context);
             const lead = findApolloLead(context, sortedNodes);
             const intendedRecipient =
               interpolate(getNodeDataString(node, "to", testEmail ?? ""), context) ||
@@ -1580,18 +1599,19 @@ serve(async (req) => {
               context,
               sortedNodes,
             );
-            const personalizedBody = interpolateLeadMergeVariables(bodyText, mergeFields);
-            const subject = `[SANDBOX: ${intendedRecipient}] ${interpolateLeadMergeVariables(
-              subjectBase,
+            const personalizedSubject = personalizeSubjectForSend(
+              rawSubject,
+              context,
               mergeFields,
-            )}`;
+            );
+            const subject = `[SANDBOX: ${intendedRecipient}] ${personalizedSubject}`;
 
             const resendResult = await runResend(
               keys,
               SANDBOX_TO_EMAIL,
               subject,
-              personalizedBody,
-              { nodeId: node.id, intendedRecipient },
+              bodyText,
+              { nodeId: node.id, intendedRecipient, mergeFields },
             );
 
             context[node.id] = {

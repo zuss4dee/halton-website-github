@@ -254,17 +254,12 @@ export function WorkspaceOutboundQueue({
       return;
     }
 
-    const company =
-      selectedLead.target_company?.trim() ||
-      selectedLead.company_name?.trim() ||
-      "your team";
-
     const sendResult = await sendApprovedLeadEmail({
       clientId: workspaceClientId,
       leadId: selectedLead.id,
       email: recipientEmail,
       body: editedCopy,
-      subject: `Quick question for ${company}`,
+      subject: "Quick question for {{company_name}}",
     });
 
     if (!sendResult.success) {

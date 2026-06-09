@@ -4,7 +4,10 @@ import {
   resolveClientFromEmail,
   type ClientSendingConfig,
 } from "@/lib/outbound/resolveClientFromEmail";
-import { interpolateLeadMergeVariables, leadRowToMergeFields } from "@/lib/outbound/leadMergeVariables";
+import {
+  leadRowToMergeFields,
+  personalizeOutboundEmailContent,
+} from "@/lib/outbound/leadMergeVariables";
 import { appendOutboundFounderSignature } from "@/lib/outbound/outboundSignature";
 
 let supabaseClient: ReturnType<typeof createClient> | undefined;
@@ -147,10 +150,9 @@ export async function processOutboundQueue(options?: { clientId?: string }) {
       }
 
       const mergeFields = leadRowToMergeFields(lead as Record<string, unknown>);
-      const personalizedSubject = interpolateLeadMergeVariables(sequenceStep.subject, mergeFields);
-      const personalizedBody = appendOutboundFounderSignature(
-        interpolateLeadMergeVariables(sequenceStep.body, mergeFields),
-      );
+      const { subject: personalizedSubject, body: personalizedBodyRaw } =
+        personalizeOutboundEmailContent(sequenceStep.subject, sequenceStep.body, mergeFields);
+      const personalizedBody = appendOutboundFounderSignature(personalizedBodyRaw);
 
       const emailResponse = await getResend().emails.send({
         from: fromEmail,
