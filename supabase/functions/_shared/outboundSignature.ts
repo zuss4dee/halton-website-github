@@ -18,6 +18,19 @@ To opt out of future emails, just reply 'stop'.`;
 
 const SIGNATURE_MARKER = "Founder | Halton Works";
 
+/** AI drafts sign off as "Damilare" — strip it so the full block isn't doubled. */
+const AI_SIGNOFF_LINE = /^[\s—–-]*(best|warm regards|regards|cheers|thanks|thank you)?[,\s]*(Damilare(\s+Adeosun)?)?[\s.,!]*$/i;
+
+function stripTrailingAiSignoff(body: string): string {
+  const lines = body.trimEnd().split(/\r?\n/);
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim();
+    if (last && !AI_SIGNOFF_LINE.test(last)) break;
+    lines.pop();
+  }
+  return lines.join("\n").trimEnd();
+}
+
 export function appendOutboundFounderSignature(body: string): string {
   const trimmed = body.trimEnd();
   if (!trimmed) {
@@ -26,5 +39,7 @@ export function appendOutboundFounderSignature(body: string): string {
   if (trimmed.includes(SIGNATURE_MARKER)) {
     return trimmed;
   }
-  return `${trimmed}${OUTBOUND_FOUNDER_SIGNATURE_TEXT}`;
+  const withoutAiSignoff = stripTrailingAiSignoff(trimmed);
+  const base = withoutAiSignoff || trimmed;
+  return `${base}${OUTBOUND_FOUNDER_SIGNATURE_TEXT}`;
 }

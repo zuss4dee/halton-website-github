@@ -119,11 +119,15 @@ async function loadOutboundFromEmail(
   return resolveOutboundFromEmail(data);
 }
 
+const NO_DASH_RULE =
+  'Never use em dashes (—), en dashes (–), or a hyphen surrounded by spaces ( - ) as punctuation. Rewrite with commas, periods, or parentheses instead. Hyphenated words like "15-minute" are fine.';
+
 const DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS = `STRICT NEGATIVE CONSTRAINTS (violating any rule = failed output):
 1. FATAL ERROR IF: You include the word "Subject:" or the actual subject line in your output. Output ONLY the body copy.
 2. FATAL ERROR IF: The text is longer than 3 sentences. You MUST use heavy line breaks between sentences.
 3. FATAL ERROR IF: You use placeholders like [Your Name]. Always sign off as "Damilare".
-4. FATAL ERROR IF: You invent or swap prospect names. Check the prospect's actual name in the user message (draft). Do not hallucinate names like "Mark" if the draft uses a different name.`;
+4. FATAL ERROR IF: You invent or swap prospect names. Check the prospect's actual name in the user message (draft). Do not hallucinate names like "Mark" if the draft uses a different name.
+5. FATAL ERROR IF: You use em dashes (—), en dashes (–), or spaced hyphens ( - ) as punctuation. ${NO_DASH_RULE}`;
 
 const DELIVERABILITY_CHIEF_FALLBACK_PROMPT = `You are the DELIVERABILITY_CHIEF — a draconian cold-email deliverability critic.
 
@@ -284,8 +288,12 @@ function buildRuntimeSystemPrompt(config: AgentRuntimeConfig, fallback: string):
 function applyDeliverabilityChiefConstraints(prompt: string): string {
   const trimmed = prompt.trim();
   if (!trimmed) return DELIVERABILITY_CHIEF_FALLBACK_PROMPT;
-  if (trimmed.includes("FATAL ERROR IF:")) return trimmed;
-  return `${trimmed}\n\n${DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS}`;
+  // DB-seeded prompts may predate the dash ban — always enforce it.
+  const withDashRule = trimmed.includes("em dash")
+    ? trimmed
+    : `${trimmed}\n\n${NO_DASH_RULE}`;
+  if (withDashRule.includes("FATAL ERROR IF:")) return withDashRule;
+  return `${withDashRule}\n\n${DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS}`;
 }
 
 /** Replace `{{steps.<nodeId>.<field>}}` with values from execution context. */
@@ -811,7 +819,10 @@ async function runDeepseekWithAgent(
     role: agentId ? undefined : agentRole,
   });
 
-  const systemPrompt = buildRuntimeSystemPrompt(runtime, DEFAULT_COPYWRITER_SYSTEM);
+  const baseSystemPrompt = buildRuntimeSystemPrompt(runtime, DEFAULT_COPYWRITER_SYSTEM);
+  const systemPrompt = baseSystemPrompt.includes("em dash")
+    ? baseSystemPrompt
+    : `${baseSystemPrompt}\n\n${NO_DASH_RULE}`;
   const llmConfig: AgentRuntimeConfig = { ...runtime, systemPrompt };
 
   console.info(
@@ -870,12 +881,16 @@ function collectHeuristicQaViolations(copy: string): string[] {
   if (/^Subject:/im.test(trimmed)) {
     violations.push("Subject line included in body");
   }
-  const sentenceCount = extractCountableBody(trimmed)
+  const countableBody = extractCountableBody(trimmed);
+  const sentenceCount = countableBody
     .split(/[.!?]+/)
     .map((part) => part.trim())
     .filter(Boolean).length;
   if (sentenceCount > 3) {
     violations.push("Exceeds 3 sentence limit");
+  }
+  if (/[—–]/.test(countableBody) || /\S\s+-\s+\S/.test(countableBody)) {
+    violations.push("Uses dash punctuation (em/en dash or spaced hyphen)");
   }
   if (!/Damilare/i.test(trimmed)) {
     violations.push("Missing signature (Damilare)");
