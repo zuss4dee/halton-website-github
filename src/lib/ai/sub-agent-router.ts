@@ -1,5 +1,3 @@
-import "server-only";
-
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 

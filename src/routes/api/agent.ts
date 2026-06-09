@@ -1,11 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { executeCEOCommand } from "@/lib/ai/agentRuntime";
-
 export const Route = createFileRoute("/api/agent")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { executeCEOCommand } = await import("@/lib/ai/agentRuntime");
         let body: {
           command?: string;
           clientId?: string;

@@ -1,5 +1,3 @@
-import "server-only";
-
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 
@@ -12,13 +10,15 @@ import {
 import { normalizeAutomationGraph } from "@/lib/admin/automationGraphNormalize";
 import {
   KNOWLEDGE_CATEGORIES,
-  resolveClientId,
-  saveToKnowledgeVault,
-  searchClientKnowledge,
   VAULT_SAVE_CATEGORIES,
   type KnowledgeCategory,
   type VaultSaveCategory,
 } from "@/lib/admin/clientKnowledge";
+import {
+  resolveClientId,
+  saveToKnowledgeVault,
+  searchClientKnowledge,
+} from "@/lib/admin/clientKnowledge.server";
 import {
   fetchOperationalMemory,
   formatOperationalMemorySection,
