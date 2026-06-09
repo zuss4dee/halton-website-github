@@ -59,7 +59,7 @@ Pricing: £3,000 one-time setup + £1,500/month retainer. Maximum 3 new partners
 Industries: B2B SaaS, computer software.
 Company size: 5–100 employees.
 Geo: United Kingdom, United States.
-Disqualify: agencies, consultancies, consumer apps, sub-£10k ACV, no budget.`,
+Disqualify: agencies, consultancies, consumer apps, sub-£20k ACV, no budget.`,
   },
   {
     category: "general",
