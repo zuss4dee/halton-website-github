@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getDefaultSkillsForRole, type ResolvedAgentRow } from "@/lib/admin/agentConfig";
+import { formatCoreToolRegistryForCeo } from "@/lib/ai/coreToolRegistry";
 import { createSupabaseServer } from "@/lib/supabase-server";
 
 /** Strict autonomous data-fetching rules — also injected on every CEO mission dispatch. */
@@ -15,9 +16,9 @@ CRITICAL OPERATIONAL RULES:
 
 Tool Discovery: You have access to a set of system tools. If the human operator requests a task for which you have a new, relevant tool, identify it and use it.
 
-Assemble the Swarm: Always use your hireSubAgent tool to provision the specific specialists needed for the task (e.g., Copywriters, QA Leads, Data Analysts).
+Assemble the Swarm: Use hireSubAgent to provision specialists with agent_name, dynamic_system_prompt, and assigned_tools[] (minimum one tool from the SUB-AGENT TOOL REGISTRY). Legacy role/instructions fields are supported for backward compatibility. For one-off tasks without persisting to the roster, use spawn_ephemeral_agent with the same fields plus specificTask.
 
-Delegate & Supervise: Delegate the drafting, reviewing, or data processing entirely to your sub-agents.
+Delegate & Supervise: Delegate work via spawn_sub_agent using the agent's id from the roster (preferred) or exact role slug. For ephemeral specialists, use spawn_ephemeral_agent.
 
 Self-Evolution: Before every mission, review your OPERATIONAL MEMORY (Global & Local) to identify past successes or failures. If a task failed previously, do not repeat it; use the identified learned_strategy to pivot immediately. After every mission, use logOperationalObservation to record your findings.
 
@@ -35,6 +36,7 @@ ${CEO_AUTONOMY_RULES}`;
 export type CeoRuntimeContext = {
   operationalMemorySection: string;
   rosterText: string;
+  coreToolRegistrySection: string;
   clientContext: string;
   knowledgeVaultDirective: string;
   emailDagDirective: string;
@@ -62,7 +64,9 @@ ${runtime.operationalMemorySection}
 Here is your current roster of specialized sub-agents you can delegate to:
 ${runtime.rosterText}
 
-When delegating, use the exact Role name.
+When delegating via spawn_sub_agent, prefer the agent id from the roster. targetAgentRole is supported for legacy agents.
+
+${runtime.coreToolRegistrySection}
 
 ${runtime.knowledgeVaultDirective}
 
@@ -168,6 +172,46 @@ export async function resolveAgentForWorkspaceServer(
   }
 
   return { agent: global as ResolvedAgentRow };
+}
+
+export async function resolveAgentByIdServer(
+  agentId: string,
+  clientId: string,
+  admin?: SupabaseClient,
+): Promise<{ agent: ResolvedAgentRow | null; error?: string }> {
+  const supabase = admin ?? createSupabaseServer();
+  const id = agentId.trim();
+  const workspaceClientId = clientId.trim();
+
+  if (!id) {
+    return { agent: null, error: "Agent id is required." };
+  }
+
+  const { data, error } = await supabase.from("agents").select("*").eq("id", id).maybeSingle();
+
+  if (error) {
+    return { agent: null, error: error.message };
+  }
+
+  if (!data) {
+    return { agent: null, error: `CRITICAL: Agent ${id} not found.` };
+  }
+
+  const agent = data as ResolvedAgentRow;
+
+  if (agent.role?.trim().toUpperCase() === "CEO") {
+    return { agent: null, error: "Cannot delegate to the CEO agent." };
+  }
+
+  if (agent.client_id && workspaceClientId && agent.client_id !== workspaceClientId) {
+    return { agent: null, error: "Agent does not belong to this workspace." };
+  }
+
+  if (agent.is_active === false) {
+    return { agent: null, error: `${agent.name ?? agent.role ?? id} is inactive.` };
+  }
+
+  return { agent };
 }
 
 export type ProvisionWorkspaceCeoResult =

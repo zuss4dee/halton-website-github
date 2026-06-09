@@ -2,7 +2,12 @@ import {
   getDefaultSkillsForRole,
   isCeoRole,
   normalizeSkills,
+  AGENT_SKILL_DEFINITIONS,
 } from "@/lib/admin/agentConfig";
+import {
+  CORE_SUB_AGENT_TOOLS,
+  type CoreToolDefinition,
+} from "@/lib/ai/coreToolRegistry";
 import { supabase } from "@/lib/supabase";
 
 export const AGENT_MODEL_OPTIONS = [
@@ -20,50 +25,51 @@ export type GlobalToolDefinition = {
   category: "research" | "outbound" | "knowledge" | "orchestration";
 };
 
+const CEO_STUDIO_TOOLS: GlobalToolDefinition[] = AGENT_SKILL_DEFINITIONS.filter((skill) =>
+  skill.scopes.includes("ceo"),
+).map((skill) => ({
+  id: skill.id,
+  label: skill.label,
+  description: skill.description,
+  category: mapSkillToCategory(skill.id),
+}));
+
+function mapSkillToCategory(
+  skillId: string,
+): GlobalToolDefinition["category"] {
+  if (skillId.includes("knowledge") || skillId.includes("vault")) return "knowledge";
+  if (
+    skillId.includes("automation") ||
+    skillId.includes("outbound") ||
+    skillId.includes("sequence")
+  ) {
+    return "outbound";
+  }
+  if (skillId.includes("alert") || skillId.includes("observation")) return "orchestration";
+  return "orchestration";
+}
+
+function coreToolToStudioDefinition(tool: CoreToolDefinition): GlobalToolDefinition {
+  return {
+    id: tool.id,
+    label: tool.label,
+    description: tool.description,
+    category: "research",
+  };
+}
+
+export const SUB_AGENT_STUDIO_TOOLS: GlobalToolDefinition[] =
+  CORE_SUB_AGENT_TOOLS.map(coreToolToStudioDefinition);
+
+/** Combined registry for validation — CEO skills + sub-agent core tools. */
 export const GLOBAL_TOOL_REGISTRY: GlobalToolDefinition[] = [
-  {
-    id: "read_knowledge_vault",
-    label: "Search Knowledge Vault",
-    description: "RAG search over client case studies, offers, and brand voice.",
-    category: "knowledge",
-  },
-  {
-    id: "write_knowledge_vault",
-    label: "Write Knowledge Vault",
-    description: "Persist structured notes and assets into the client vault.",
-    category: "knowledge",
-  },
-  {
-    id: "build_automation",
-    label: "Build & Run Automation",
-    description: "Compile and execute outbound DAG workflows.",
-    category: "outbound",
-  },
-  {
-    id: "delegate_sub_agent",
-    label: "Delegate Sub-Agents",
-    description: "Spawn specialist agents from the roster.",
-    category: "orchestration",
-  },
-  {
-    id: "web_search",
-    label: "Web Search (Firecrawl)",
-    description: "Scrape URLs and return markdown research briefs.",
-    category: "research",
-  },
-  {
-    id: "apollo_scrape",
-    label: "Apollo Scrape",
-    description: "Search Apollo.io for ICP-matched leads.",
-    category: "research",
-  },
-  {
-    id: "notion_sync",
-    label: "Notion Sync",
-    description: "Read or write workspace pages via Notion API (when configured).",
-    category: "knowledge",
-  },
+  ...CEO_STUDIO_TOOLS,
+  ...SUB_AGENT_STUDIO_TOOLS,
 ];
+
+export function getStudioToolsForRole(role: string | null | undefined): GlobalToolDefinition[] {
+  return isCeoRole(role) ? CEO_STUDIO_TOOLS : SUB_AGENT_STUDIO_TOOLS;
+}
 
 export type ReasoningConfig = {
   instructions?: string;

@@ -29,10 +29,17 @@ import { filterCeoTools, getDefaultSkillsForRole } from "@/lib/admin/agentConfig
 import { buildCronAuthHeaders, getCronSecret } from "@/lib/cron/cronAuth";
 import { processOutboundQueue } from "@/lib/cron/processOutbound";
 import {
+  formatCoreToolRegistryForCeo,
+  generateDynamicAgentRoleSlug,
+  normalizeAssignedSubAgentTools,
+  validateAssignedTools,
+} from "@/lib/ai/coreToolRegistry";
+import {
   buildCeoLlmSystemMessage,
   CEO_AUTONOMY_RULES,
   fetchWorkspaceCeoAgent,
   fetchWorkspaceCeoSystemPrompt,
+  resolveAgentByIdServer,
   resolveAgentForWorkspaceServer,
 } from "@/lib/admin/provisionWorkspaceCeo";
 import { getSupabaseServer } from "@/lib/supabase-server";
@@ -41,7 +48,7 @@ import { formatReplyContextForCeo, type TerminalReplyContext } from "@/lib/admin
 import { fetchCrmLeadsForWorkspace } from "@/lib/admin/fetchCrmLead";
 
 import { deepseek } from "./providers";
-import { executeSubAgent } from "./sub-agent-router";
+import { executeDynamicAgent, executeSubAgent, executeSubAgentById } from "./sub-agent-router";
 
 type CEOAgent = {
   id: string;
@@ -52,9 +59,18 @@ type CEOAgent = {
 };
 
 type AgentRosterRow = {
+  id: string;
+  name?: string | null;
   role: string;
   system_prompt: string;
+  skills?: unknown;
+  tool_bindings?: unknown;
 };
+
+function formatRosterTools(agent: AgentRosterRow): string {
+  const bindings = getEffectiveToolBindings(agent);
+  return bindings.length > 0 ? bindings.join(", ") : "none";
+}
 
 export type CEOCommandResult = {
   executionId: string;
@@ -120,7 +136,7 @@ export async function executeCEOCommand(
 
   const { data: rosterData, error: rosterError } = await supabase
     .from("agents")
-    .select("role, system_prompt")
+    .select("id, name, role, system_prompt, skills, tool_bindings")
     .eq("client_id", clientId)
     .neq("role", "CEO");
 
@@ -157,9 +173,15 @@ CRITICAL INSTRUCTION: You are operating strictly on behalf of this client. Base 
   );
   const rosterText =
     roster.length > 0
-      ? roster.map((agent) => `- ${agent.role}: ${summarizePrompt(agent.system_prompt)}`).join("\n")
+      ? roster
+          .map((agent) => {
+            const displayName = agent.name?.trim() || agent.role;
+            return `- ${displayName} (id: ${agent.id}, role: ${agent.role}) | tools: ${formatRosterTools(agent)} — ${summarizePrompt(agent.system_prompt)}`;
+          })
+          .join("\n")
       : "- No specialized sub-agents currently registered.";
   const rosterRoles = roster.map((agent) => agent.role).filter(Boolean);
+  const coreToolRegistrySection = formatCoreToolRegistryForCeo();
 
   const knowledgeVaultDirective = `
 --- CLIENT KNOWLEDGE VAULT (RAG) ---
@@ -205,15 +227,24 @@ ${CEO_AUTONOMY_RULES}
 
   const tools = {
     spawn_sub_agent: tool({
-      description: `Delegate a focused task to a specialist sub-agent. When delegating, use the exact Role name from the live roster: ${rosterRoles.length > 0 ? rosterRoles.join(", ") : "No roles available yet"}.`,
-      inputSchema: z.object({
-        targetAgentRole: z
-          .string()
-          .describe("Exact role name from the live roster (e.g., RESEARCHER)."),
-        specificTask: z.string().describe("The exact instruction for the sub-agent."),
-      }),
-      execute: async ({ targetAgentRole, specificTask }) => {
-        const normalizedTarget = targetAgentRole.trim().toUpperCase();
+      description: `Delegate a focused task to a specialist sub-agent. Prefer agentId from the live roster. Legacy targetAgentRole also supported: ${rosterRoles.length > 0 ? rosterRoles.join(", ") : "No roles available yet"}.`,
+      inputSchema: z
+        .object({
+          agentId: z
+            .string()
+            .optional()
+            .describe("UUID of the sub-agent from the live roster (preferred)."),
+          targetAgentRole: z
+            .string()
+            .optional()
+            .describe("Exact role slug from the live roster (legacy fallback)."),
+          specificTask: z.string().describe("The exact instruction for the sub-agent."),
+        })
+        .refine((data) => Boolean(data.agentId?.trim() || data.targetAgentRole?.trim()), {
+          message: "Provide agentId or targetAgentRole.",
+        }),
+      execute: async ({ agentId, targetAgentRole, specificTask }) => {
+        const normalizedTarget = targetAgentRole?.trim().toUpperCase() ?? "";
         const taskLooksLikeEmail =
           /email|draft|outreach|cold\s*email|review\s*queue|send\s*copy|write\s*copy/i.test(
             specificTask,
@@ -231,17 +262,97 @@ ${CEO_AUTONOMY_RULES}
 
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
           action: "SPAWNING_AGENT",
-          target: targetAgentRole,
+          agentId: agentId?.trim() || null,
+          target: targetAgentRole ?? null,
           task: specificTask,
         });
 
-        const targetResolved = await resolveAgentForWorkspaceServer(targetAgentRole, clientId);
-        if (!targetResolved.agent) {
-          return targetResolved.error ?? `CRITICAL: ${targetAgentRole} Agent offline.`;
+        let subAgentResult: string;
+
+        if (agentId?.trim()) {
+          const targetResolved = await resolveAgentByIdServer(agentId.trim(), clientId);
+          if (!targetResolved.agent) {
+            return targetResolved.error ?? `CRITICAL: Agent ${agentId} offline.`;
+          }
+
+          subAgentResult = await executeSubAgentById(
+            agentId.trim(),
+            specificTask,
+            clientId,
+            executionId,
+          );
+        } else {
+          const role = targetAgentRole!.trim();
+          const targetResolved = await resolveAgentForWorkspaceServer(role, clientId);
+          if (!targetResolved.agent) {
+            return targetResolved.error ?? `CRITICAL: ${role} Agent offline.`;
+          }
+
+          subAgentResult = await executeSubAgent(role, specificTask, clientId, executionId);
         }
 
-        const subAgentResult = await executeSubAgent(
-          targetAgentRole,
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          result: subAgentResult,
+        });
+
+        return subAgentResult;
+      },
+    }),
+    spawn_ephemeral_agent: tool({
+      description:
+        "Run a one-off specialist without persisting to the roster. Provide agent_name, dynamic_system_prompt, assigned_tools (min 1 from SUB-AGENT TOOL REGISTRY), and specificTask.",
+      inputSchema: z.object({
+        agent_name: z.string().describe("Display name for this ephemeral specialist."),
+        dynamic_system_prompt: z
+          .string()
+          .describe("Full system prompt defining persona, rules, and output format."),
+        assigned_tools: z
+          .array(z.string())
+          .min(1)
+          .describe("Tool ids from the SUB-AGENT TOOL REGISTRY (e.g. web_search, apollo_scrape)."),
+        specificTask: z.string().describe("The exact instruction for the ephemeral agent."),
+        model: z.string().optional(),
+      }),
+      execute: async ({
+        agent_name,
+        dynamic_system_prompt,
+        assigned_tools,
+        specificTask,
+        model,
+      }) => {
+        let normalizedTools: { skills: string[]; tool_bindings: string[] };
+        try {
+          normalizedTools = normalizeAssignedSubAgentTools(assigned_tools);
+        } catch (validationError) {
+          const message =
+            validationError instanceof Error
+              ? validationError.message
+              : "Invalid assigned_tools.";
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "SPAWN_EPHEMERAL_AGENT",
+            message,
+          });
+          return message;
+        }
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "SPAWN_EPHEMERAL_AGENT",
+          name: agent_name.trim(),
+          assigned_tools: normalizedTools.skills,
+          task: specificTask,
+        });
+
+        const subAgentResult = await executeDynamicAgent(
+          {
+            name: agent_name.trim(),
+            role: generateDynamicAgentRoleSlug(),
+            model: model?.trim() || "deepseek-chat",
+            system_prompt: dynamic_system_prompt,
+            skills: normalizedTools.skills,
+            tool_bindings: normalizedTools.tool_bindings,
+          },
           specificTask,
           clientId,
           executionId,
@@ -249,6 +360,8 @@ ${CEO_AUTONOMY_RULES}
 
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
           status: "SUCCESS",
+          action: "SPAWN_EPHEMERAL_AGENT",
+          name: agent_name.trim(),
           result: subAgentResult,
         });
 
@@ -939,38 +1052,96 @@ ${CEO_AUTONOMY_RULES}
     }),
     hireSubAgent: tool({
       description:
-        "Hires a new specialized AI sub-agent for this workspace. Use after reviewing client data to dynamically build a tailored team. Provide detailed instructions that become the agent's system prompt. If role is DELIVERABILITY_CHIEF, the saved prompt is automatically merged with draconian fatal constraints (body-only output, max 3 sentences, sign as Damilare, no name hallucination).",
+        "Hires a new specialized AI sub-agent for this workspace. Provide agent_name, dynamic_system_prompt, and assigned_tools[] (min 1 from SUB-AGENT TOOL REGISTRY). Legacy role/instructions/name fields supported. DELIVERABILITY_CHIEF role keeps the fatal-constraints template wrapper.",
       inputSchema: z.object({
+        agent_name: z.string().optional().describe("Display name for the new specialist."),
+        dynamic_system_prompt: z
+          .string()
+          .optional()
+          .describe("Expert-level system prompt — persona, rules, output format."),
+        assigned_tools: z
+          .array(z.string())
+          .optional()
+          .describe("Tool ids from SUB-AGENT TOOL REGISTRY (minimum 1)."),
+        model: z.string().optional(),
         role: z
           .string()
-          .describe("UPPERCASE role slug with no spaces (e.g., LINKEDIN_SPECIALIST)."),
-        instructions: z
-          .string()
-          .describe(
-            "Expert-level system prompt defining the agent's persona, rules of operation, and output format.",
-          ),
-        name: z.string().optional(),
-        model: z.string().optional(),
+          .optional()
+          .describe("Legacy: UPPERCASE role slug (e.g., LINKEDIN_SPECIALIST)."),
+        instructions: z.string().optional().describe("Legacy: alias for dynamic_system_prompt."),
+        name: z.string().optional().describe("Legacy: alias for agent_name."),
       }),
-      execute: async ({ role, instructions, name, model }) => {
-        const normalizedRole = role.trim().toUpperCase().replace(/\s+/g, "_");
+      execute: async ({
+        agent_name,
+        dynamic_system_prompt,
+        assigned_tools,
+        model,
+        role,
+        instructions,
+        name,
+      }) => {
+        const legacyMode = Boolean(role?.trim() || instructions?.trim()) && !assigned_tools?.length;
+
+        let normalizedRole: string;
+        let agentName: string;
+        let resolvedSystemPrompt: string;
+        let agentModel: string;
+        let skills: string[];
+        let tool_bindings: string[];
+
+        if (legacyMode) {
+          normalizedRole = role!.trim().toUpperCase().replace(/\s+/g, "_");
+          agentName = name?.trim() || agent_name?.trim() || normalizedRole.replace(/_/g, " ");
+          resolvedSystemPrompt =
+            normalizedRole === DELIVERABILITY_CHIEF_ROLE
+              ? buildDeliverabilityChiefSystemPrompt(instructions ?? dynamic_system_prompt ?? "")
+              : (instructions ?? dynamic_system_prompt ?? "");
+          agentModel = model?.trim() || "deepseek-chat";
+          skills = getDefaultSkillsForRole(normalizedRole);
+          tool_bindings = skills;
+        } else {
+          if (!agent_name?.trim() || !dynamic_system_prompt?.trim()) {
+            return "hireSubAgent requires agent_name and dynamic_system_prompt (or legacy role + instructions).";
+          }
+          if (!assigned_tools?.length) {
+            return "hireSubAgent requires assigned_tools with at least one tool from the SUB-AGENT TOOL REGISTRY.";
+          }
+
+          try {
+            validateAssignedTools(assigned_tools);
+          } catch (validationError) {
+            return validationError instanceof Error
+              ? validationError.message
+              : "Invalid assigned_tools.";
+          }
+
+          const legacyRole = role?.trim().toUpperCase().replace(/\s+/g, "_");
+          normalizedRole =
+            legacyRole === DELIVERABILITY_CHIEF_ROLE
+              ? DELIVERABILITY_CHIEF_ROLE
+              : generateDynamicAgentRoleSlug();
+          agentName = agent_name.trim();
+          resolvedSystemPrompt =
+            normalizedRole === DELIVERABILITY_CHIEF_ROLE
+              ? buildDeliverabilityChiefSystemPrompt(dynamic_system_prompt)
+              : dynamic_system_prompt;
+          agentModel = model?.trim() || "deepseek-chat";
+          const normalized = normalizeAssignedSubAgentTools(assigned_tools);
+          skills = normalized.skills;
+          tool_bindings = normalized.tool_bindings;
+        }
+
         if (normalizedRole === "CEO") {
           return "BLOCKED: CEO is provisioned once per workspace and cannot be hired as a sub-agent.";
         }
-        const agentName = name?.trim() || normalizedRole.replace(/_/g, " ");
-        const agentModel = model?.trim() || "deepseek-chat";
 
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
           action: "HIRE_SUB_AGENT",
           name: agentName,
           role: normalizedRole,
           model: agentModel,
+          assigned_tools: skills,
         });
-
-        const resolvedSystemPrompt =
-          normalizedRole === DELIVERABILITY_CHIEF_ROLE
-            ? buildDeliverabilityChiefSystemPrompt(instructions)
-            : instructions;
 
         const { error: insertError } = await supabase.from("agents").insert({
           name: agentName,
@@ -979,8 +1150,8 @@ ${CEO_AUTONOMY_RULES}
           system_prompt: resolvedSystemPrompt,
           client_id: clientId,
           reports_to_agent_id: ceoAgent.id,
-          skills: getDefaultSkillsForRole(normalizedRole),
-          tool_bindings: getDefaultSkillsForRole(normalizedRole),
+          skills,
+          tool_bindings,
           is_active: true,
         });
 
@@ -994,12 +1165,13 @@ ${CEO_AUTONOMY_RULES}
           return message;
         }
 
-        const message = `Successfully hired ${agentName} (${normalizedRole}). They are now available for delegation.`;
+        const message = `Successfully hired ${agentName} (${normalizedRole}) with tools: ${skills.join(", ")}. They are now available for delegation via spawn_sub_agent using their roster id.`;
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
           status: "SUCCESS",
           action: "HIRE_SUB_AGENT",
           name: agentName,
           role: normalizedRole,
+          assigned_tools: skills,
         });
 
         return message;
@@ -1259,8 +1431,10 @@ ${CEO_AUTONOMY_RULES}
 
   const ceoSkills = getEffectiveToolBindings(ceoAgent);
   const enabledCeoTools = filterCeoTools(tools, ceoSkills);
+  const canDelegate = ceoSkills.includes("delegate_sub_agent");
   const ceoTools = {
     ...enabledCeoTools,
+    ...(canDelegate ? { spawn_ephemeral_agent: tools.spawn_ephemeral_agent } : {}),
     fetch_crm_lead: tools.fetch_crm_lead,
     execute_executive_override: tools.execute_executive_override,
     hireSubAgent: tools.hireSubAgent,
@@ -1279,6 +1453,7 @@ ${CEO_AUTONOMY_RULES}
     system: buildCeoLlmSystemMessage(ceoSystemPrompt, {
       operationalMemorySection,
       rosterText,
+      coreToolRegistrySection,
       clientContext,
       knowledgeVaultDirective,
       emailDagDirective,

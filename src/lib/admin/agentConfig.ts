@@ -1,3 +1,8 @@
+import {
+  CORE_SUB_AGENT_TOOLS,
+  SUB_AGENT_SKILL_TOOL_MAP,
+  validateAssignedTools,
+} from "@/lib/ai/coreToolRegistry";
 import { supabase } from "@/lib/supabase";
 import type { AgentRosterRow } from "@/lib/admin/useAgentRoster";
 
@@ -40,7 +45,7 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     label: "Fetch CRM Lead",
     description:
       "Search workspace leads by name, email, or company before building automations.",
-    scopes: ["ceo"],
+    scopes: ["ceo", "sub_agent"],
   },
   {
     id: "executive_override",
@@ -93,6 +98,8 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
   },
 ];
 
+const SUB_AGENT_REGISTRY_SKILL_IDS = new Set(CORE_SUB_AGENT_TOOLS.map((tool) => tool.id));
+
 const CEO_DEFAULT_SKILLS = [
   "read_knowledge_vault",
   "write_knowledge_vault",
@@ -126,7 +133,10 @@ export function getDefaultSkillsForRole(role: string | null | undefined): string
 }
 
 export function normalizeSkills(raw: unknown, role: string | null | undefined): string[] {
-  const allowed = new Set(getSkillsForAgentPanel(role).map((skill) => skill.id));
+  const panelSkills = getSkillsForAgentPanel(role).map((skill) => skill.id);
+  const allowed = isCeoRole(role)
+    ? new Set(panelSkills)
+    : new Set([...panelSkills, ...SUB_AGENT_REGISTRY_SKILL_IDS]);
   const defaults = getDefaultSkillsForRole(role);
 
   let parsed: string[] = [];
@@ -135,7 +145,12 @@ export function normalizeSkills(raw: unknown, role: string | null | undefined): 
   }
 
   const source = parsed.length > 0 ? parsed : defaults;
-  return source.filter((id) => allowed.has(id));
+
+  try {
+    return validateAssignedTools(source).filter((id) => allowed.has(id));
+  } catch {
+    return source.filter((id) => allowed.has(id));
+  }
 }
 
 export type AgentConfigDraft = {
@@ -229,15 +244,10 @@ export async function saveAgentConfiguration(
   return { ok: true, agentId: data.id };
 }
 
-/** Maps configured skill ids to sub-agent tool keys used at runtime. */
-export const SUB_AGENT_SKILL_TOOL_MAP: Record<string, keyof SubAgentToolSet> = {
-  apollo_scrape: "apollo_search_leads",
-  web_search: "firecrawl_scrape_url",
-};
-
 export type SubAgentToolSet = {
   apollo_search_leads?: unknown;
   firecrawl_scrape_url?: unknown;
+  fetch_crm_lead?: unknown;
 };
 
 export function filterSubAgentTools<T extends SubAgentToolSet>(
@@ -248,10 +258,11 @@ export function filterSubAgentTools<T extends SubAgentToolSet>(
   const filtered = {} as Partial<T>;
 
   for (const [skillId, toolKey] of Object.entries(SUB_AGENT_SKILL_TOOL_MAP)) {
-    if (!enabled.has(skillId)) continue;
-    const tool = tools[toolKey];
+    const runtimeKey = toolKey as keyof T;
+    if (!enabled.has(skillId) && !enabled.has(toolKey)) continue;
+    const tool = tools[runtimeKey];
     if (tool !== undefined) {
-      filtered[toolKey] = tool;
+      filtered[runtimeKey] = tool;
     }
   }
 
@@ -279,6 +290,7 @@ export type ResolvedAgentRow = {
   model?: string | null;
   system_prompt: string;
   skills?: unknown;
+  tool_bindings?: unknown;
   is_active?: boolean | null;
   client_id?: string | null;
 };
@@ -357,6 +369,44 @@ export async function resolveAgentForWorkspace(
   }
 
   return { agent: global as ResolvedAgentRow };
+}
+
+export async function resolveAgentById(
+  agentId: string,
+  clientId: string,
+): Promise<{ agent: ResolvedAgentRow | null; error?: string }> {
+  const id = agentId.trim();
+  const workspaceClientId = clientId.trim();
+
+  if (!id) {
+    return { agent: null, error: "Agent id is required." };
+  }
+
+  const { data, error } = await supabase.from("agents").select("*").eq("id", id).maybeSingle();
+
+  if (error) {
+    return { agent: null, error: error.message };
+  }
+
+  if (!data) {
+    return { agent: null, error: `CRITICAL: Agent ${id} not found.` };
+  }
+
+  const agent = data as ResolvedAgentRow;
+
+  if (agent.role?.trim().toUpperCase() === "CEO") {
+    return { agent: null, error: "Cannot delegate to the CEO agent." };
+  }
+
+  if (agent.client_id && workspaceClientId && agent.client_id !== workspaceClientId) {
+    return { agent: null, error: "Agent does not belong to this workspace." };
+  }
+
+  if (agent.is_active === false) {
+    return { agent: null, error: `${agent.name ?? agent.role ?? id} is inactive.` };
+  }
+
+  return { agent };
 }
 
 export function filterCeoTools<T extends Record<string, unknown>>(

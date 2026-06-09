@@ -4,11 +4,13 @@ import {
   AGENT_MODEL_OPTIONS,
   agentToStudioDraft,
   fetchAgentForStudio,
-  GLOBAL_TOOL_REGISTRY,
+  getStudioToolsForRole,
   saveAgentStudioConfig,
   type AgentStudioDraft,
   type AgentStudioRow,
 } from "@/lib/admin/agentStudio";
+import { isDynamicAgentRole } from "@/lib/ai/coreToolRegistry";
+import { isCeoRole } from "@/lib/admin/agentConfig";
 import { getAgentStatus } from "@/lib/admin/agentStatus";
 import { AgentStatusBadge } from "@/components/admin/AgentStatusBadge";
 
@@ -150,6 +152,9 @@ export function AgentStudioPage({ clientId, agentId }: AgentStudioPageProps) {
 
   const displayName = draft.name || agent.name || "Unnamed agent";
   const isGlobal = !agent.client_id;
+  const isCeo = isCeoRole(agent.role);
+  const isDynamicRole = isDynamicAgentRole(agent.role);
+  const studioTools = getStudioToolsForRole(agent.role);
   const agentStatus = getAgentStatus(
     {
       role: agent.role,
@@ -173,6 +178,11 @@ export function AgentStudioPage({ clientId, agentId }: AgentStudioPageProps) {
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-bold capitalize text-gray-900">{displayName}</h1>
+          {isDynamicRole && agent.role ? (
+            <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 font-mono text-xs text-violet-800">
+              {agent.role}
+            </span>
+          ) : null}
           <AgentStatusBadge status={agentStatus} />
         </div>
         <p className="mt-2 text-sm text-gray-500">
@@ -267,9 +277,13 @@ export function AgentStudioPage({ clientId, agentId }: AgentStudioPageProps) {
 
           <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="mb-1 text-lg font-semibold text-gray-900">Skill registry</h2>
-            <p className="mb-2 text-sm text-gray-500">Attach global tools to this agent.</p>
+            <p className="mb-2 text-sm text-gray-500">
+              {isCeo
+                ? "Attach CEO orchestration tools. Sub-agent research tools are configured on hired specialists."
+                : "Assign sub-agent runtime tools. These map to the core tool registry used by hireSubAgent and spawn_ephemeral_agent."}
+            </p>
             <div>
-              {GLOBAL_TOOL_REGISTRY.map((tool, index) => {
+              {studioTools.map((tool, index) => {
                 const attached = draft.tool_bindings.includes(tool.id);
                 return (
                   <StudioToggleRow
@@ -278,7 +292,7 @@ export function AgentStudioPage({ clientId, agentId }: AgentStudioPageProps) {
                     onChange={(enabled) => toggleTool(tool.id, enabled)}
                     label={tool.label}
                     description={tool.description}
-                    isLast={index === GLOBAL_TOOL_REGISTRY.length - 1}
+                    isLast={index === studioTools.length - 1}
                   />
                 );
               })}
