@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
 import {
   AdminDataTable,
   AdminKpiCard,
   AdminPageHeader,
   formatAdminDate,
 } from "@/components/admin/AdminBrutalist";
+import { DeleteLeadDialog } from "@/components/admin/DeleteLeadDialog";
+import { EditLeadSheet } from "@/components/admin/EditLeadSheet";
 import {
   fetchLeadsCrmMetrics,
   fetchLeadsCrmPage,
   LEADS_CRM_PAGE_SIZE,
   type LeadsCrmMetrics,
 } from "@/lib/admin/leadsCrmData";
+import { deleteCrmLead } from "@/lib/admin/leadsCrmMutations";
 import {
   resolveCrmStatusBadge,
   resolveLeadCampaignLabel,
@@ -68,6 +72,9 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
   const [totalRows, setTotalRows] = useState(0);
   const [page, setPage] = useState(1);
   const [tableLoading, setTableLoading] = useState(true);
+  const [editLead, setEditLead] = useState<LeadRow | null>(null);
+  const [deleteLead, setDeleteLead] = useState<LeadRow | null>(null);
+  const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(totalRows / LEADS_CRM_PAGE_SIZE));
   const pageStart = totalRows === 0 ? 0 : (page - 1) * LEADS_CRM_PAGE_SIZE + 1;
@@ -104,6 +111,36 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
     void loadPage();
   }, [loadPage]);
 
+  const handleLeadUpdated = useCallback(
+    async (updated: LeadRow) => {
+      setRows((current) =>
+        current.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)),
+      );
+      await loadMetrics();
+    },
+    [loadMetrics],
+  );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteLead?.id) return;
+
+    setDeletingLeadId(deleteLead.id);
+    const result = await deleteCrmLead({
+      clientId,
+      leadId: deleteLead.id,
+    });
+
+    if (!result.ok) {
+      setDeletingLeadId(null);
+      throw new Error(result.error);
+    }
+
+    setRows((current) => current.filter((row) => row.id !== deleteLead.id));
+    setTotalRows((current) => Math.max(0, current - 1));
+    setDeletingLeadId(null);
+    await loadMetrics();
+  }, [clientId, deleteLead, loadMetrics]);
+
   return (
     <div className="max-w-[1400px]">
       <AdminPageHeader
@@ -111,8 +148,8 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
         title="Workspace Leads"
         description={
           companyName
-            ? `Read-only master view of every lead and campaign status for ${companyName}.`
-            : "Read-only master view of every lead and campaign status in this workspace."
+            ? `Master view of every lead and campaign status for ${companyName}.`
+            : "Master view of every lead and campaign status in this workspace."
         }
       />
 
@@ -191,6 +228,40 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
               return <CrmStatusBadge label={badge.label} tone={badge.tone} />;
             },
           },
+          {
+            key: "actions",
+            header: "Actions",
+            align: "right",
+            render: (lead) => {
+              const isDeleting = deletingLeadId === lead.id;
+              return (
+                <div className="inline-flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    aria-label={`Edit ${leadDisplayName(lead)}`}
+                    disabled={isDeleting}
+                    onClick={() => setEditLead(lead)}
+                    className="inline-flex h-8 w-8 items-center justify-center border border-transparent text-ink/55 transition-colors hover:border-hairline hover:bg-ink/[0.04] hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${leadDisplayName(lead)}`}
+                    disabled={isDeleting}
+                    onClick={() => setDeleteLead(lead)}
+                    className="inline-flex h-8 w-8 items-center justify-center border border-transparent text-ink/55 transition-colors hover:border-hairline hover:bg-red-50 hover:text-[#c03939] disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+                    )}
+                  </button>
+                </div>
+              );
+            },
+          },
         ]}
         rows={rows}
         rowKey={(lead) => lead.id}
@@ -227,6 +298,25 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
           </button>
         </div>
       </div>
+
+      <EditLeadSheet
+        clientId={clientId}
+        lead={editLead}
+        open={editLead !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditLead(null);
+        }}
+        onSuccess={handleLeadUpdated}
+      />
+
+      <DeleteLeadDialog
+        open={deleteLead !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingLeadId) setDeleteLead(null);
+        }}
+        leadName={deleteLead ? leadDisplayName(deleteLead) : ""}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
