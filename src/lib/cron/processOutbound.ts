@@ -1,5 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { getSupabaseServer } from "@/lib/supabase-server";
 import {
   resolveClientFromEmail,
   type ClientSendingConfig,
@@ -10,24 +10,10 @@ import {
 } from "@/lib/outbound/leadMergeVariables";
 import { appendOutboundFounderSignature } from "@/lib/outbound/outboundSignature";
 
-let supabaseClient: ReturnType<typeof createClient> | undefined;
 let resendClient: Resend | undefined;
 
 function getCronSupabase() {
-  if (!supabaseClient) {
-    const supabaseUrl =
-      process.env.SUPABASE_URL?.trim() ||
-      process.env.VITE_SUPABASE_URL?.trim() ||
-      "";
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error(
-        "Missing SUPABASE_URL/VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for outbound cron.",
-      );
-    }
-    supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
-  }
-  return supabaseClient;
+  return getSupabaseServer();
 }
 
 function getResend() {
