@@ -120,7 +120,7 @@ serve(async (req) => {
 
     const { data: client, error: clientError } = await supabase
       .from("clients")
-      .select("notion_api_key, notion_database_id, slack_webhook_url, meetings_booked")
+      .select("notion_api_key, notion_database_id, slack_webhook_url")
       .eq("id", clientId)
       .single();
 
@@ -164,18 +164,36 @@ serve(async (req) => {
       console.warn("[catch-booking] Notion keys not configured — skipping CRM write");
     }
 
-    const priorMeetings =
-      typeof client.meetings_booked === "number" && Number.isFinite(client.meetings_booked)
-        ? client.meetings_booked
-        : 0;
+    let meetingsBooked: number | null = null;
 
-    const { error: meetingsError } = await supabase
+    const { data: priorRow, error: priorMeetingsError } = await supabase
       .from("clients")
-      .update({ meetings_booked: priorMeetings + 1 })
-      .eq("id", clientId);
+      .select("meetings_booked")
+      .eq("id", clientId)
+      .maybeSingle();
 
-    if (meetingsError) {
-      console.error("[catch-booking] meetings_booked increment failed:", meetingsError.message);
+    if (priorMeetingsError) {
+      console.warn(
+        "[catch-booking] meetings_booked read skipped:",
+        priorMeetingsError.message,
+      );
+    } else {
+      const priorMeetings =
+        typeof priorRow?.meetings_booked === "number" &&
+          Number.isFinite(priorRow.meetings_booked)
+          ? priorRow.meetings_booked
+          : 0;
+
+      const { error: meetingsError } = await supabase
+        .from("clients")
+        .update({ meetings_booked: priorMeetings + 1 })
+        .eq("id", clientId);
+
+      if (meetingsError) {
+        console.error("[catch-booking] meetings_booked increment failed:", meetingsError.message);
+      } else {
+        meetingsBooked = priorMeetings + 1;
+      }
     }
 
     const crmLine = notionPageUrl
@@ -214,7 +232,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         url: notionPageUrl,
-        meetingsBooked: priorMeetings + 1,
+        meetingsBooked,
         slackNotified: slackResult.ok,
         slackSource: slackResult.source,
         slackError: slackResult.error ?? null,
