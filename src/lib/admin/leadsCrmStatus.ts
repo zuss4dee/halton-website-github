@@ -1,6 +1,7 @@
 import {
   HUMAN_REVIEW_QUEUE_STATUSES,
   LEAD_QUEUE_STATUS,
+  PENDING_APPROVAL_QUEUE_STATUSES,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
 
@@ -116,10 +117,7 @@ export function resolveLeadLastActionDate(lead: LeadRow): string | null {
 
 export function isPendingApprovalLead(lead: LeadRow): boolean {
   const queueStatus = normalize(lead.queue_status);
-  return (
-    HUMAN_REVIEW_QUEUE_STATUSES.some((status) => status === queueStatus) ||
-    queueStatus === LEAD_QUEUE_STATUS.APPROVED
-  );
+  return PENDING_APPROVAL_QUEUE_STATUSES.some((status) => status === queueStatus);
 }
 
 export function isActiveSendLead(lead: LeadRow): boolean {

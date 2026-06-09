@@ -54,9 +54,16 @@ export function AdminKpiCard({ label, value, isLoading }: AdminKpiCardProps) {
 
 type AdminDataTableColumn<T> = {
   key: string;
-  header: string;
+  header: ReactNode;
   align?: "left" | "right";
   render: (row: T) => ReactNode;
+};
+
+export type AdminDataTableSelection = {
+  selectedKeys: ReadonlySet<string>;
+  onToggleRow: (key: string, selected: boolean) => void;
+  onToggleAll: (selected: boolean) => void;
+  disabled?: boolean;
 };
 
 type AdminDataTableProps<T> = {
@@ -67,7 +74,11 @@ type AdminDataTableProps<T> = {
   emptyMessage?: string;
   recordLabel?: string;
   onRowClick?: (row: T) => void;
+  selection?: AdminDataTableSelection;
 };
+
+const ADMIN_TABLE_CHECKBOX_CLASS =
+  "h-3.5 w-3.5 shrink-0 cursor-pointer border border-hairline bg-paper accent-ink disabled:cursor-not-allowed disabled:opacity-40";
 
 export function AdminDataTable<T>({
   columns,
@@ -77,7 +88,15 @@ export function AdminDataTable<T>({
   emptyMessage = "NO_RECORDS",
   recordLabel,
   onRowClick,
+  selection,
 }: AdminDataTableProps<T>) {
+  const visibleKeys = rows.map((row) => rowKey(row));
+  const allVisibleSelected =
+    visibleKeys.length > 0 && visibleKeys.every((key) => selection?.selectedKeys.has(key));
+  const someVisibleSelected =
+    visibleKeys.some((key) => selection?.selectedKeys.has(key)) && !allVisibleSelected;
+  const columnCount = columns.length + (selection ? 1 : 0);
+
   return (
     <section>
       {recordLabel ? (
@@ -97,6 +116,23 @@ export function AdminDataTable<T>({
         <table className="w-full min-w-[520px] border-collapse text-left">
           <thead>
             <tr className="border-b border-hairline bg-ink/[0.03] font-mono text-[9px] tracking-[0.22em] text-ink/40 uppercase">
+              {selection ? (
+                <th className="w-10 px-4 py-3 font-normal">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all leads on this page"
+                    className={ADMIN_TABLE_CHECKBOX_CLASS}
+                    checked={allVisibleSelected}
+                    ref={(element) => {
+                      if (element) {
+                        element.indeterminate = someVisibleSelected;
+                      }
+                    }}
+                    disabled={isLoading || rows.length === 0 || selection.disabled}
+                    onChange={(event) => selection.onToggleAll(event.target.checked)}
+                  />
+                </th>
+              ) : null}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -110,49 +146,71 @@ export function AdminDataTable<T>({
           <tbody className="font-mono text-[11px] tracking-[0.06em] text-ink">
             {isLoading ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-12 text-ink/40 uppercase">
+                <td colSpan={columnCount} className="px-4 py-12 text-ink/40 uppercase">
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-12 text-ink/40 uppercase">
+                <td colSpan={columnCount} className="px-4 py-12 text-ink/40 uppercase">
                   {emptyMessage}
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr
-                  key={rowKey(row)}
-                  className={`border-t border-hairline/80 ${
-                    onRowClick
-                      ? "cursor-pointer transition-colors hover:bg-ink/[0.04] focus-visible:bg-ink/[0.04] focus-visible:outline-none"
-                      : ""
-                  }`}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  onKeyDown={
-                    onRowClick
-                      ? (e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            onRowClick(row);
+              rows.map((row) => {
+                const key = rowKey(row);
+                const isSelected = selection?.selectedKeys.has(key) ?? false;
+
+                return (
+                  <tr
+                    key={key}
+                    className={`border-t border-hairline/80 ${
+                      isSelected ? "bg-ink/[0.03]" : ""
+                    } ${
+                      onRowClick
+                        ? "cursor-pointer transition-colors hover:bg-ink/[0.04] focus-visible:bg-ink/[0.04] focus-visible:outline-none"
+                        : ""
+                    }`}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onKeyDown={
+                      onRowClick
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onRowClick(row);
+                            }
                           }
-                        }
-                      : undefined
-                  }
-                  tabIndex={onRowClick ? 0 : undefined}
-                  role={onRowClick ? "button" : undefined}
-                >
-                  {columns.map((col) => (
-                    <td
-                      key={col.key}
-                      className={`px-4 py-4 ${col.align === "right" ? "text-right tabular-nums" : ""}`}
-                    >
-                      {col.render(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+                        : undefined
+                    }
+                    tabIndex={onRowClick ? 0 : undefined}
+                    role={onRowClick ? "button" : undefined}
+                  >
+                    {selection ? (
+                      <td className="w-10 px-4 py-4">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${key}`}
+                          className={ADMIN_TABLE_CHECKBOX_CLASS}
+                          checked={isSelected}
+                          disabled={selection.disabled}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) =>
+                            selection.onToggleRow(key, event.target.checked)
+                          }
+                        />
+                      </td>
+                    ) : null}
+                    {columns.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`px-4 py-4 ${col.align === "right" ? "text-right tabular-nums" : ""}`}
+                      >
+                        {col.render(row)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -79,3 +79,37 @@ export async function deleteCrmLead(input: {
 
   return { ok: true };
 }
+
+export async function deleteCrmLeadsBatch(input: {
+  clientId: string;
+  leadIds: string[];
+}): Promise<{ ok: true; deletedCount: number } | { ok: false; error: string }> {
+  const clientId = input.clientId.trim();
+  const leadIds = [...new Set(input.leadIds.map((id) => id.trim()).filter(Boolean))];
+
+  if (!clientId) {
+    return { ok: false, error: "Workspace context is missing." };
+  }
+
+  if (leadIds.length === 0) {
+    return { ok: false, error: "No leads selected." };
+  }
+
+  const { error, count } = await supabase
+    .from("leads")
+    .delete({ count: "exact" })
+    .eq("client_id", clientId)
+    .in("id", leadIds);
+
+  if (error) {
+    console.error("[leadsCrmMutations] batch delete:", error);
+    return { ok: false, error: error.message };
+  }
+
+  const deletedCount = count ?? 0;
+  if (deletedCount === 0) {
+    return { ok: false, error: "No matching leads found in this workspace." };
+  }
+
+  return { ok: true, deletedCount };
+}

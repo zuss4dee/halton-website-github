@@ -27,6 +27,12 @@ export const HUMAN_REVIEW_QUEUE_STATUSES = [
   LEAD_QUEUE_STATUS.QA_REJECTED,
 ] as const;
 
+/** Pending approval tab + CRM KPI — includes QA-auto-approved awaiting send */
+export const PENDING_APPROVAL_QUEUE_STATUSES = [
+  ...HUMAN_REVIEW_QUEUE_STATUSES,
+  LEAD_QUEUE_STATUS.APPROVED,
+] as const;
+
 export type LeadQueueStatus = (typeof LEAD_QUEUE_STATUS)[keyof typeof LEAD_QUEUE_STATUS];
 
 /** Pipeline statuses treated as high-intent for the closer dashboard */

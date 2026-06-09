@@ -5,10 +5,14 @@ import { AttentionDot } from "@/components/admin/AttentionDot";
 import {
   LEAD_CAMPAIGN_STATUS,
   LEAD_QUEUE_STATUS,
-  HUMAN_REVIEW_QUEUE_STATUSES,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
 import { AddLeadTrigger } from "@/components/admin/AddLeadSheet";
+import {
+  fetchActiveSequenceLeads,
+  fetchPendingApprovalLeads,
+  fetchSentLeads,
+} from "@/lib/admin/leadsQueueData";
 import { sendApprovedLeadEmail } from "@/lib/admin/outboundSend";
 import { resolveWorkspaceClientId } from "@/lib/admin/resolveWorkspaceClientId";
 import { useWorkspaceAttention } from "@/lib/admin/useWorkspaceAttention";
@@ -94,7 +98,7 @@ export function WorkspaceOutboundQueue({
   });
   const [workspaceClientId, setWorkspaceClientId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<QueueTab>("active");
+  const [activeTab, setActiveTab] = useState<QueueTab>("pending");
   const [queue, setQueue] = useState<LeadRow[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
   const [editedCopy, setEditedCopy] = useState("");
@@ -146,41 +150,21 @@ export function WorkspaceOutboundQueue({
 
     setIsLoading(true);
 
-    const queueStatus =
-      activeTab === "pending"
-        ? HUMAN_REVIEW_QUEUE_STATUSES
-        : activeTab === "sent"
-          ? LEAD_QUEUE_STATUS.SENT
-          : LEAD_QUEUE_STATUS.ACTIVE;
+    try {
+      const rows =
+        activeTab === "pending"
+          ? await fetchPendingApprovalLeads(workspaceClientId)
+          : activeTab === "sent"
+            ? await fetchSentLeads(workspaceClientId)
+            : await fetchActiveSequenceLeads(workspaceClientId);
 
-    let query = supabase
-      .from("leads")
-      .select("*")
-      .eq("client_id", workspaceClientId);
-
-    query =
-      activeTab === "pending"
-        ? query.in("queue_status", [...HUMAN_REVIEW_QUEUE_STATUSES])
-        : query.eq("queue_status", queueStatus as string);
-
-    query =
-      activeTab === "sent"
-        ? query.order("sent_at", { ascending: false, nullsFirst: false })
-        : activeTab === "active"
-          ? query.order("next_send_date", { ascending: true, nullsFirst: false })
-          : query.order("created_at", { ascending: false });
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("OUTBOUND QUEUE FETCH ERROR:", error);
-      setQueue([]);
-    } else {
-      const rows = (data ?? []) as LeadRow[];
-      setQueue(rows.filter((row) => row.client_id === workspaceClientId));
+      setQueue(rows);
       if (activeTab === "pending" && rows.length === 0) {
         syncAttention();
       }
+    } catch (error) {
+      console.error("OUTBOUND QUEUE FETCH ERROR:", error);
+      setQueue([]);
     }
 
     setIsLoading(false);
@@ -339,9 +323,9 @@ export function WorkspaceOutboundQueue({
           >
             ← Return to orchestration
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Active Pipeline</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Approve &amp; Send</h1>
           <p className="mt-2 text-sm text-gray-500">
-            Review and approve generated outbound sequences.
+            Review pending drafts and approve outbound emails for sending.
           </p>
         </header>
       ) : null}

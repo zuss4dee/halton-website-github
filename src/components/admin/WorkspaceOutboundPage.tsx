@@ -22,9 +22,9 @@ export function WorkspaceOutboundPage({ clientId }: WorkspaceOutboundPageProps) 
         >
           ← Return to orchestration
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900">Active Pipeline</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Approve &amp; Send</h1>
         <p className="mt-2 text-sm text-gray-500">
-          Review and approve generated outbound sequences.
+          Review pending drafts and approve outbound emails for sending.
         </p>
       </header>
 

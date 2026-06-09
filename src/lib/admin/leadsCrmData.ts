@@ -1,6 +1,6 @@
 import {
-  HUMAN_REVIEW_QUEUE_STATUSES,
   LEAD_QUEUE_STATUS,
+  PENDING_APPROVAL_QUEUE_STATUSES,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
@@ -20,10 +20,7 @@ export type LeadsCrmPageResult = {
 export const LEADS_CRM_PAGE_SIZE = 50;
 
 export async function fetchLeadsCrmMetrics(clientId: string): Promise<LeadsCrmMetrics> {
-  const pendingStatuses = [
-    ...HUMAN_REVIEW_QUEUE_STATUSES,
-    LEAD_QUEUE_STATUS.APPROVED,
-  ];
+  const pendingStatuses = [...PENDING_APPROVAL_QUEUE_STATUSES];
 
   const [total, pending, active, completed, bouncedFailed] = await Promise.all([
     supabase

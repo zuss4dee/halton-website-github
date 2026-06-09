@@ -11,7 +11,8 @@ import {
 type DeleteLeadDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  leadName: string;
+  leadName?: string;
+  selectedCount?: number;
   onConfirm: () => Promise<void>;
 };
 
@@ -19,6 +20,7 @@ export function DeleteLeadDialog({
   open,
   onOpenChange,
   leadName,
+  selectedCount = 1,
   onConfirm,
 }: DeleteLeadDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -47,17 +49,21 @@ export function DeleteLeadDialog({
     }
   };
 
-  const displayName = leadName.trim() || "this lead";
+  const isBatch = selectedCount > 1;
+  const displayName = leadName?.trim() || "this lead";
+  const description = isBatch
+    ? `Are you sure you want to delete ${selectedCount.toLocaleString()} leads? This action cannot be undone.`
+    : `Are you sure you want to delete ${displayName}? This action cannot be undone.`;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !isDeleting && onOpenChange(next)}>
       <DialogContent className="max-w-md gap-0 rounded-none border border-hairline bg-paper p-0 text-ink shadow-none sm:rounded-none [&>button]:text-ink/50 [&>button]:hover:text-ink">
         <DialogHeader className="border-b border-hairline px-6 py-5 text-left">
           <DialogTitle className="font-display text-2xl leading-[0.95] tracking-[-0.04em] text-ink uppercase">
-            Delete Lead
+            {isBatch ? "Delete Leads" : "Delete Lead"}
           </DialogTitle>
           <DialogDescription className="mt-3 font-mono text-[11px] leading-relaxed tracking-[0.06em] text-ink-soft">
-            Are you sure you want to delete {displayName}? This action cannot be undone.
+            {description}
           </DialogDescription>
         </DialogHeader>
 
@@ -87,6 +93,8 @@ export function DeleteLeadDialog({
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 Deleting…
               </>
+            ) : isBatch ? (
+              `Delete ${selectedCount.toLocaleString()} leads`
             ) : (
               "Delete lead"
             )}

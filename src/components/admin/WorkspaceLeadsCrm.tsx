@@ -14,7 +14,7 @@ import {
   LEADS_CRM_PAGE_SIZE,
   type LeadsCrmMetrics,
 } from "@/lib/admin/leadsCrmData";
-import { deleteCrmLead } from "@/lib/admin/leadsCrmMutations";
+import { deleteCrmLead, deleteCrmLeadsBatch } from "@/lib/admin/leadsCrmMutations";
 import {
   resolveCrmStatusBadge,
   resolveLeadCampaignLabel,
@@ -74,7 +74,12 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
   const [tableLoading, setTableLoading] = useState(true);
   const [editLead, setEditLead] = useState<LeadRow | null>(null);
   const [deleteLead, setDeleteLead] = useState<LeadRow | null>(null);
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(() => new Set());
   const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+
+  const selectedCount = selectedLeadIds.size;
 
   const totalPages = Math.max(1, Math.ceil(totalRows / LEADS_CRM_PAGE_SIZE));
   const pageStart = totalRows === 0 ? 0 : (page - 1) * LEADS_CRM_PAGE_SIZE + 1;
@@ -111,6 +116,43 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
     void loadPage();
   }, [loadPage]);
 
+  useEffect(() => {
+    setSelectedLeadIds(new Set());
+  }, [clientId]);
+
+  const toggleLeadSelection = useCallback((leadId: string, selected: boolean) => {
+    setSelectedLeadIds((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(leadId);
+      } else {
+        next.delete(leadId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisibleLeads = useCallback(
+    (selected: boolean) => {
+      setSelectedLeadIds((current) => {
+        const next = new Set(current);
+        for (const lead of rows) {
+          if (selected) {
+            next.add(lead.id);
+          } else {
+            next.delete(lead.id);
+          }
+        }
+        return next;
+      });
+    },
+    [rows],
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedLeadIds(new Set());
+  }, []);
+
   const handleLeadUpdated = useCallback(
     async (updated: LeadRow) => {
       setRows((current) =>
@@ -140,6 +182,31 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
     setDeletingLeadId(null);
     await loadMetrics();
   }, [clientId, deleteLead, loadMetrics]);
+
+  const handleConfirmBatchDelete = useCallback(async () => {
+    const leadIds = [...selectedLeadIds];
+    if (leadIds.length === 0) return;
+
+    setIsBatchDeleting(true);
+    const result = await deleteCrmLeadsBatch({
+      clientId,
+      leadIds,
+    });
+
+    if (!result.ok) {
+      setIsBatchDeleting(false);
+      throw new Error(result.error);
+    }
+
+    const deletedIds = new Set(leadIds);
+    setRows((current) => current.filter((row) => !deletedIds.has(row.id)));
+    setTotalRows((current) => Math.max(0, current - result.deletedCount));
+    setSelectedLeadIds(new Set());
+    setIsBatchDeleting(false);
+    await loadMetrics();
+  }, [clientId, loadMetrics, selectedLeadIds]);
+
+  const selectionBusy = isBatchDeleting || deletingLeadId !== null;
 
   return (
     <div className="max-w-[1400px]">
@@ -176,8 +243,50 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
         />
       </section>
 
+      {selectedCount > 0 ? (
+        <div className="mb-4 flex flex-col gap-3 border border-hairline bg-ink/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-mono text-[10px] tracking-[0.16em] text-ink/60 uppercase tabular-nums">
+            {selectedCount.toLocaleString()} selected
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={selectionBusy}
+              onClick={clearSelection}
+              className="border border-hairline px-3 py-2 font-mono text-[10px] tracking-[0.16em] text-ink uppercase transition-colors hover:bg-ink/[0.04] disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              disabled={selectionBusy}
+              onClick={() => setBatchDeleteOpen(true)}
+              className="inline-flex items-center gap-2 border border-[#c03939] px-3 py-2 font-mono text-[10px] tracking-[0.16em] text-[#c03939] uppercase transition-colors hover:bg-[#c03939] hover:text-paper disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              {isBatchDeleting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  Deleting…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+                  Delete selected
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <AdminDataTable
         recordLabel="Master Lead Registry"
+        selection={{
+          selectedKeys: selectedLeadIds,
+          onToggleRow: toggleLeadSelection,
+          onToggleAll: toggleAllVisibleLeads,
+          disabled: selectionBusy,
+        }}
         columns={[
           {
             key: "name",
@@ -233,13 +342,13 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
             header: "Actions",
             align: "right",
             render: (lead) => {
-              const isDeleting = deletingLeadId === lead.id;
+              const isDeleting = deletingLeadId === lead.id || isBatchDeleting;
               return (
                 <div className="inline-flex items-center justify-end gap-1">
                   <button
                     type="button"
                     aria-label={`Edit ${leadDisplayName(lead)}`}
-                    disabled={isDeleting}
+                    disabled={isDeleting || selectedCount > 0}
                     onClick={() => setEditLead(lead)}
                     className="inline-flex h-8 w-8 items-center justify-center border border-transparent text-ink/55 transition-colors hover:border-hairline hover:bg-ink/[0.04] hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
                   >
@@ -314,8 +423,18 @@ export function WorkspaceLeadsCrm({ clientId, companyName }: WorkspaceLeadsCrmPr
         onOpenChange={(open) => {
           if (!open && !deletingLeadId) setDeleteLead(null);
         }}
-        leadName={deleteLead ? leadDisplayName(deleteLead) : ""}
+        leadName={deleteLead ? leadDisplayName(deleteLead) : undefined}
+        selectedCount={1}
         onConfirm={handleConfirmDelete}
+      />
+
+      <DeleteLeadDialog
+        open={batchDeleteOpen}
+        onOpenChange={(open) => {
+          if (!open && !isBatchDeleting) setBatchDeleteOpen(false);
+        }}
+        selectedCount={selectedCount}
+        onConfirm={handleConfirmBatchDelete}
       />
     </div>
   );

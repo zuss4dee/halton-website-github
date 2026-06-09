@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { LEAD_QUEUE_STATUS, HUMAN_REVIEW_QUEUE_STATUSES } from "@/lib/admin/leadsRepository";
+import { countPendingApprovalLeads } from "@/lib/admin/leadsQueueData";
 import { resolveWorkspaceClientId } from "@/lib/admin/resolveWorkspaceClientId";
 import {
   WORKSPACE_ATTENTION_INVALIDATE,
@@ -36,19 +36,8 @@ export function useWorkspaceAttention(
         return;
       }
 
-      const { count, error } = await supabase
-        .from("leads")
-        .select("*", { count: "exact", head: true })
-        .eq("client_id", workspaceClientId)
-        .in("queue_status", [...HUMAN_REVIEW_QUEUE_STATUSES]);
-
-      if (error) {
-        console.error("[workspace-attention] pending count:", error);
-        setPendingDraftCount(0);
-        return;
-      }
-
-      setPendingDraftCount(count ?? 0);
+      const pendingCount = await countPendingApprovalLeads(workspaceClientId);
+      setPendingDraftCount(pendingCount);
     } catch (error) {
       console.error("[workspace-attention] unexpected failure:", error);
       setPendingDraftCount(0);
