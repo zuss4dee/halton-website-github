@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { sortAgentLogs, type AgentLogRow } from "@/lib/admin/agentTelemetry";
 import type { AgentRosterRow } from "@/lib/admin/useAgentRoster";
 import {
@@ -7,6 +7,7 @@ import {
   shouldOfferQuickReply,
   type TerminalReplyContext,
 } from "@/lib/admin/terminalReply";
+import { ThinkingIndicator, ThoughtLogBlock } from "@/components/admin/ThoughtLogBlock";
 import { dispatchAgentActivity, dispatchAgentMissionState } from "@/lib/admin/agentActivity";
 import { resolveAgentForWorkspace, type ResolvedAgentRow } from "@/lib/admin/agentConfig";
 import { resolveActivityRolesFromLog } from "@/lib/admin/resolveAgentActivityRole";
@@ -64,7 +65,17 @@ function emitAgentActivityForLog(log: AgentLogRow, agents: AgentRosterRow[]) {
   }
 }
 
-function TelemetryLogPayload({ log }: { log: AgentLogRow }) {
+function TelemetryLogPayload({
+  log,
+  isLatestThought,
+  isExecuting,
+  replyAction,
+}: {
+  log: AgentLogRow;
+  isLatestThought?: boolean;
+  isExecuting?: boolean;
+  replyAction?: ReactNode;
+}) {
   const payload = log.payload ?? {};
 
   if (log.event_type === "SPAWN") {
@@ -84,7 +95,13 @@ function TelemetryLogPayload({ log }: { log: AgentLogRow }) {
 
   if (log.event_type === "THOUGHT") {
     const thought = typeof payload.thought === "string" ? payload.thought : "";
-    return <div className="whitespace-pre-wrap">{thought || "—"}</div>;
+    return (
+      <ThoughtLogBlock
+        thought={thought}
+        defaultOpen={Boolean(isLatestThought && isExecuting)}
+        replyAction={replyAction}
+      />
+    );
   }
 
   if (log.event_type === "TOOL_CALL") {
@@ -142,31 +159,54 @@ type TelemetryLogEntryProps = {
   log: AgentLogRow;
   agentLabel: string;
   onReplyToPoint?: (context: TerminalReplyContext) => void;
+  isLatestThought?: boolean;
+  isExecuting?: boolean;
 };
 
-function TelemetryLogEntry({ log, agentLabel, onReplyToPoint }: TelemetryLogEntryProps) {
+function TelemetryLogEntry({
+  log,
+  agentLabel,
+  onReplyToPoint,
+  isLatestThought,
+  isExecuting,
+}: TelemetryLogEntryProps) {
+  const isThought = log.event_type === "THOUGHT";
   const canReply = shouldOfferQuickReply(log, agentLabel);
+
+  const replyButton =
+    canReply && onReplyToPoint ? (
+      <button
+        type="button"
+        onClick={() => onReplyToPoint(buildReplyContext(log, agentLabel))}
+        className="font-mono text-[10px] tracking-[0.1em] text-gray-500 uppercase transition-colors hover:text-gray-300"
+      >
+        ↳ Reply to this point
+      </button>
+    ) : null;
 
   return (
     <div className="flex flex-col gap-1.5 border-b border-gray-800/50 py-3 last:border-0">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-gray-500">{formatLogTimestamp(log.created_at)}</span>
         <span className="font-medium text-white">[{agentLabel}]</span>
-        <span className={`font-medium uppercase ${eventBadgeClass(log.event_type)}`}>
-          {log.event_type}
-        </span>
+        {isThought ? (
+          <span className="text-xs font-normal italic text-gray-500">Reasoning</span>
+        ) : (
+          <span className={`font-medium uppercase ${eventBadgeClass(log.event_type)}`}>
+            {log.event_type}
+          </span>
+        )}
       </div>
-      <div className="ml-2 mt-1 border-l border-gray-700 pl-4 text-gray-300">
-        <TelemetryLogPayload log={log} />
-        {canReply && onReplyToPoint ? (
-          <button
-            type="button"
-            onClick={() => onReplyToPoint(buildReplyContext(log, agentLabel))}
-            className="mt-2 font-mono text-[10px] tracking-[0.1em] text-gray-500 uppercase transition-colors hover:text-gray-300"
-          >
-            ↳ Reply to this point
-          </button>
-        ) : null}
+      <div
+        className={`ml-2 mt-1 pl-4 ${isThought ? "border-l border-gray-800" : "border-l border-gray-700 text-gray-300"}`}
+      >
+        <TelemetryLogPayload
+          log={log}
+          isLatestThought={isLatestThought}
+          isExecuting={isExecuting}
+          replyAction={isThought ? replyButton : undefined}
+        />
+        {!isThought ? replyButton : null}
       </div>
     </div>
   );
@@ -412,6 +452,7 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
   }, [clientId, command, isExecuting, replyContext]);
 
   const sortedLogs = sortAgentLogs(telemetryLogs);
+  const latestThoughtLogId = [...sortedLogs].reverse().find((log) => log.event_type === "THOUGHT")?.id;
   const showTerminal = isExecuting || sortedLogs.length > 0 || Boolean(executionId);
 
   useEffect(() => {
@@ -524,9 +565,12 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
                   log={log}
                   agentLabel={agentLabel}
                   onReplyToPoint={handleReplyToPoint}
+                  isLatestThought={Boolean(latestThoughtLogId && log.id === latestThoughtLogId)}
+                  isExecuting={isExecuting}
                 />
               );
             })}
+            {isExecuting ? <ThinkingIndicator /> : null}
             <div ref={terminalEndRef} aria-hidden="true" />
           </div>
         </section>
