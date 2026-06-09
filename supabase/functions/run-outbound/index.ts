@@ -841,6 +841,22 @@ async function fetchDeliverabilityChiefRuntime(
   return { ...runtime, systemPrompt };
 }
 
+const SIGNATURE_LINE_PATTERN = /^[\s—–-]*(best|regards|cheers|thanks)?[,\s]*Damilare(\s+Adeosun)?[\s.,!]*$/i;
+const GREETING_LINE_PATTERN = /^(hey|hi|hello|dear)\b[^.!?]{0,60},?\s*$/i;
+
+/** Body without greeting/signature lines — only real sentences count toward the limit. */
+function extractCountableBody(copy: string): string {
+  const lines = copy.trim().split(/\r?\n/);
+  const kept = lines.filter((line) => {
+    const candidate = line.trim();
+    if (!candidate) return false;
+    if (SIGNATURE_LINE_PATTERN.test(candidate)) return false;
+    if (GREETING_LINE_PATTERN.test(candidate)) return false;
+    return true;
+  });
+  return kept.join("\n");
+}
+
 function collectHeuristicQaViolations(copy: string): string[] {
   const violations: string[] = [];
   const trimmed = copy.trim();
@@ -854,7 +870,7 @@ function collectHeuristicQaViolations(copy: string): string[] {
   if (/^Subject:/im.test(trimmed)) {
     violations.push("Subject line included in body");
   }
-  const sentenceCount = trimmed
+  const sentenceCount = extractCountableBody(trimmed)
     .split(/[.!?]+/)
     .map((part) => part.trim())
     .filter(Boolean).length;
