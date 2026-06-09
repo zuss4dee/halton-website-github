@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { executeCEOCommand } from "@/lib/ai/ceo-router";
+import { executeCEOCommand } from "@/lib/ai/agentRuntime";
 
 export const Route = createFileRoute("/api/agent")({
   server: {

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 
@@ -269,26 +271,37 @@ ${CEO_AUTONOMY_RULES}
 
         let subAgentResult: string;
 
-        if (agentId?.trim()) {
-          const targetResolved = await resolveAgentByIdServer(agentId.trim(), clientId);
-          if (!targetResolved.agent) {
-            return targetResolved.error ?? `CRITICAL: Agent ${agentId} offline.`;
-          }
+        try {
+          if (agentId?.trim()) {
+            const targetResolved = await resolveAgentByIdServer(agentId.trim(), clientId);
+            if (!targetResolved.agent) {
+              return targetResolved.error ?? `CRITICAL: Agent ${agentId} offline.`;
+            }
 
-          subAgentResult = await executeSubAgentById(
-            agentId.trim(),
-            specificTask,
-            clientId,
-            executionId,
-          );
-        } else {
-          const role = targetAgentRole!.trim();
-          const targetResolved = await resolveAgentForWorkspaceServer(role, clientId);
-          if (!targetResolved.agent) {
-            return targetResolved.error ?? `CRITICAL: ${role} Agent offline.`;
-          }
+            subAgentResult = await executeSubAgentById(
+              agentId.trim(),
+              specificTask,
+              clientId,
+              executionId,
+            );
+          } else {
+            const role = targetAgentRole!.trim();
+            const targetResolved = await resolveAgentForWorkspaceServer(role, clientId);
+            if (!targetResolved.agent) {
+              return targetResolved.error ?? `CRITICAL: ${role} Agent offline.`;
+            }
 
-          subAgentResult = await executeSubAgent(role, specificTask, clientId, executionId);
+            subAgentResult = await executeSubAgent(role, specificTask, clientId, executionId);
+          }
+        } catch (spawnError) {
+          const message =
+            spawnError instanceof Error ? spawnError.message : "Sub-agent execution failed.";
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "SPAWNING_AGENT",
+            message,
+          });
+          return `TOOL_ERROR: ${message}`;
         }
 
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
@@ -344,19 +357,31 @@ ${CEO_AUTONOMY_RULES}
           task: specificTask,
         });
 
-        const subAgentResult = await executeDynamicAgent(
-          {
-            name: agent_name.trim(),
-            role: generateDynamicAgentRoleSlug(),
-            model: model?.trim() || "deepseek-chat",
-            system_prompt: dynamic_system_prompt,
-            skills: normalizedTools.skills,
-            tool_bindings: normalizedTools.tool_bindings,
-          },
-          specificTask,
-          clientId,
-          executionId,
-        );
+        let subAgentResult: string;
+        try {
+          subAgentResult = await executeDynamicAgent(
+            {
+              name: agent_name.trim(),
+              role: generateDynamicAgentRoleSlug(),
+              model: model?.trim() || "deepseek-chat",
+              system_prompt: dynamic_system_prompt,
+              skills: normalizedTools.skills,
+              tool_bindings: normalizedTools.tool_bindings,
+            },
+            specificTask,
+            clientId,
+            executionId,
+          );
+        } catch (spawnError) {
+          const message =
+            spawnError instanceof Error ? spawnError.message : "Ephemeral agent execution failed.";
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "SPAWN_EPHEMERAL_AGENT",
+            message,
+          });
+          return `TOOL_ERROR: ${message}`;
+        }
 
         await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
           status: "SUCCESS",

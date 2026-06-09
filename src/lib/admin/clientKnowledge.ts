@@ -1,4 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { supabase } from "@/lib/supabase";
+import { getSupabaseServer } from "@/lib/supabase-server";
 
 export const KNOWLEDGE_CATEGORIES = ["case_study", "brand_voice", "core_offer"] as const;
 
@@ -45,6 +48,13 @@ export type ClientKnowledgeSearchResult = {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function getKnowledgeDb(): SupabaseClient {
+  if (typeof window === "undefined") {
+    return getSupabaseServer();
+  }
+  return supabase;
+}
+
 export async function resolveClientId(
   clientIdOrSlug: string,
 ): Promise<{ clientId: string } | { error: string }> {
@@ -57,7 +67,7 @@ export async function resolveClientId(
     return { clientId: trimmed };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getKnowledgeDb()
     .from("clients")
     .select("id")
     .eq("slug", trimmed)
@@ -96,7 +106,7 @@ export async function listClientKnowledgeEntries(
     return { error: "clientId is required." };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getKnowledgeDb()
     .from("client_knowledge")
     .select("id, client_id, title, content, category, created_at")
     .eq("client_id", workspaceClientId)
@@ -130,7 +140,7 @@ export async function deleteClientKnowledgeEntry(
     return { error: "clientId and entry id are required." };
   }
 
-  const { error } = await supabase
+  const { error } = await getKnowledgeDb()
     .from("client_knowledge")
     .delete()
     .eq("id", id)
@@ -147,7 +157,7 @@ export async function searchClientKnowledge(
   clientId: string,
   category?: KnowledgeCategory,
 ): Promise<ClientKnowledgeSearchResult | { error: string }> {
-  let query = supabase
+  let query = getKnowledgeDb()
     .from("client_knowledge")
     .select("id, client_id, title, content, category, created_at")
     .eq("client_id", clientId);
@@ -221,7 +231,7 @@ export async function saveToKnowledgeVault(
     return { error: "content is required." };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getKnowledgeDb()
     .from("client_knowledge")
     .insert({
       client_id: input.clientId,
@@ -284,7 +294,7 @@ export async function updateClientKnowledgeEntry(
     return { error: "content is required." };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getKnowledgeDb()
     .from("client_knowledge")
     .update({
       title,

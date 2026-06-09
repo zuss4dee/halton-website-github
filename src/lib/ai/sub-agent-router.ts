@@ -1,17 +1,23 @@
+import "server-only";
+
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 
-import {
-  filterSubAgentTools,
-  resolveAgentById,
-  resolveAgentForWorkspace,
-} from "@/lib/admin/agentConfig";
+import { filterSubAgentTools } from "@/lib/admin/agentConfig";
 import { fetchCrmLeadsForWorkspace } from "@/lib/admin/fetchCrmLead";
 import { getEffectiveToolBindings } from "@/lib/admin/agentStudio";
+import {
+  resolveAgentByIdServer,
+  resolveAgentForWorkspaceServer,
+} from "@/lib/admin/provisionWorkspaceCeo";
 import type { ClientRow } from "@/lib/admin/clientsRepository";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseServer } from "@/lib/supabase-server";
 
 import { deepseek } from "./providers";
+
+function getRuntimeDb() {
+  return getSupabaseServer();
+}
 
 type SubAgentRow = {
   id: string;
@@ -68,7 +74,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
         limit: z.number().default(5),
       }),
       execute: async (args) => {
-        await supabase.from("agent_logs").insert({
+        await getRuntimeDb().from("agent_logs").insert({
           execution_id: executionId,
           client_id: clientId,
           agent_id: agentId,
@@ -76,7 +82,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
           payload: { tool: "apollo_search_leads", args },
         });
 
-        const { data: client } = await supabase
+        const { data: client } = await getRuntimeDb()
           .from("clients")
           .select("apollo_api_key")
           .eq("id", clientId)
@@ -135,12 +141,12 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
           enrichment_status: "PENDING_SCRAPE",
         }));
 
-        const { error: leadsError } = await supabase.from("leads").insert(leadsToInsert);
+        const { error: leadsError } = await getRuntimeDb().from("leads").insert(leadsToInsert);
         if (leadsError) {
           console.error("Failed to persist leads:", leadsError);
         }
 
-        await supabase.from("agent_logs").insert({
+        await getRuntimeDb().from("agent_logs").insert({
           execution_id: executionId,
           client_id: clientId,
           agent_id: agentId,
@@ -159,7 +165,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
         url: z.string(),
       }),
       execute: async (args) => {
-        await supabase.from("agent_logs").insert({
+        await getRuntimeDb().from("agent_logs").insert({
           execution_id: executionId,
           client_id: clientId,
           agent_id: agentId,
@@ -167,7 +173,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
           payload: { tool: "firecrawl_scrape_url", args },
         });
 
-        const { data: client } = await supabase
+        const { data: client } = await getRuntimeDb()
           .from("clients")
           .select("firecrawl_api_key")
           .eq("id", clientId)
@@ -206,7 +212,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
         const safeMarkdown =
           rawMarkdown.slice(0, 2500) + (rawMarkdown.length > 2500 ? "\n\n...[TRUNCATED]" : "");
 
-        await supabase.from("agent_logs").insert({
+        await getRuntimeDb().from("agent_logs").insert({
           execution_id: executionId,
           client_id: clientId,
           agent_id: agentId,
@@ -229,7 +235,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
       execute: async ({ search_query }) => {
         const query = search_query.trim();
 
-        await supabase.from("agent_logs").insert({
+        await getRuntimeDb().from("agent_logs").insert({
           execution_id: executionId,
           client_id: clientId,
           agent_id: agentId,
@@ -240,7 +246,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
         const result = await fetchCrmLeadsForWorkspace(clientId, query);
 
         if ("error" in result) {
-          await supabase.from("agent_logs").insert({
+          await getRuntimeDb().from("agent_logs").insert({
             execution_id: executionId,
             client_id: clientId,
             agent_id: agentId,
@@ -250,7 +256,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
           return JSON.stringify({ error: result.error, leads: [], count: 0 });
         }
 
-        await supabase.from("agent_logs").insert({
+        await getRuntimeDb().from("agent_logs").insert({
           execution_id: executionId,
           client_id: clientId,
           agent_id: agentId,
@@ -270,7 +276,7 @@ function createSubAgentRuntimeTools(clientId: string, executionId: string, agent
 }
 
 async function loadClientContext(clientId: string): Promise<string> {
-  const { data: client, error: clientError } = await supabase
+  const { data: client, error: clientError } = await getRuntimeDb()
     .from("clients")
     .select("*")
     .eq("id", clientId)
@@ -319,6 +325,8 @@ export async function executeDynamicAgent(
 
   const logAgentId = config.id ?? null;
 
+  const supabase = getRuntimeDb();
+
   await supabase.from("agent_logs").insert({
     execution_id: executionId,
     client_id: clientId,
@@ -334,23 +342,38 @@ export async function executeDynamicAgent(
 
   const modelId = agentRow.model?.trim() || "deepseek-chat";
 
-  const response = await generateText({
-    model: deepseek(modelId),
-    system: `${agentRow.system_prompt}\n\n${clientContext}\n\n${agentSpecificInstructions}`,
-    prompt: `Execute this task: ${task}`,
-    tools: subAgentTools(clientId, executionId, agentRow),
-    stopWhen: stepCountIs(5),
-  });
+  try {
+    const response = await generateText({
+      model: deepseek(modelId),
+      system: `${agentRow.system_prompt}\n\n${clientContext}\n\n${agentSpecificInstructions}`,
+      prompt: `Execute this task: ${task}`,
+      tools: subAgentTools(clientId, executionId, agentRow),
+      stopWhen: stepCountIs(5),
+    });
 
-  await supabase.from("agent_logs").insert({
-    execution_id: executionId,
-    client_id: clientId,
-    agent_id: logAgentId,
-    event_type: "THOUGHT",
-    payload: { thought: response.text },
-  });
+    await supabase.from("agent_logs").insert({
+      execution_id: executionId,
+      client_id: clientId,
+      agent_id: logAgentId,
+      event_type: "THOUGHT",
+      payload: { thought: response.text },
+    });
 
-  return response.text;
+    return response.text;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Sub-agent execution failed.";
+    await supabase
+      .from("agent_logs")
+      .insert({
+        execution_id: executionId,
+        client_id: clientId,
+        agent_id: logAgentId,
+        event_type: "TOOL_RESULT",
+        payload: { status: "ERROR", action: "SUB_AGENT_EXECUTION", message },
+      })
+      .catch(() => undefined);
+    throw new Error(message);
+  }
 }
 
 export async function executeSubAgentById(
@@ -359,7 +382,7 @@ export async function executeSubAgentById(
   clientId: string,
   executionId: string,
 ): Promise<string> {
-  const resolved = await resolveAgentById(agentId, clientId);
+  const resolved = await resolveAgentByIdServer(agentId, clientId);
   if (!resolved.agent) {
     throw new Error(resolved.error ?? `CRITICAL: Agent ${agentId} offline.`);
   }
@@ -388,7 +411,7 @@ export async function executeSubAgent(
   clientId: string,
   executionId: string,
 ): Promise<string> {
-  const resolved = await resolveAgentForWorkspace(role, clientId);
+  const resolved = await resolveAgentForWorkspaceServer(role, clientId);
   if (!resolved.agent) {
     throw new Error(resolved.error ?? `CRITICAL: ${role} Agent offline.`);
   }
