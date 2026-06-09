@@ -344,6 +344,118 @@ function findApolloLead(
   return null;
 }
 
+function pickNonEmptyString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+/** Normalize company from Apollo, CRM fetch, trigger payload, or node data. */
+function readLeadCompanyFromRecord(record: unknown): string | null {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return null;
+  }
+  const row = record as Record<string, unknown>;
+  return pickNonEmptyString(row.target_company, row.company, row.company_name);
+}
+
+function resolveQueueLeadProfile(
+  context: ExecutionContext,
+  sortedNodes: FlowNode[],
+  testEmail: string,
+): {
+  email: string;
+  prospect_name: string;
+  target_company: string | null;
+  target_role: string | null;
+} {
+  const apolloLead = findApolloLead(context, sortedNodes);
+  const triggerNode = sortedNodes.find((candidate) => candidate.type === "trigger");
+  const triggerCtx =
+    triggerNode &&
+    context[triggerNode.id] &&
+    typeof context[triggerNode.id] === "object" &&
+    !Array.isArray(context[triggerNode.id])
+      ? (context[triggerNode.id] as Record<string, unknown>)
+      : null;
+  const triggerData = triggerNode?.data ?? null;
+
+  const email =
+    pickNonEmptyString(apolloLead?.email, triggerCtx?.email, triggerCtx?.testEmail) ||
+    (triggerNode ? getNodeDataString(triggerNode, "email") : "") ||
+    testEmail;
+
+  let target_company =
+    readLeadCompanyFromRecord(apolloLead) ||
+    readLeadCompanyFromRecord(triggerCtx) ||
+    readLeadCompanyFromRecord(triggerData);
+
+  if (!target_company) {
+    for (const node of sortedNodes) {
+      target_company = readLeadCompanyFromRecord(context[node.id]);
+      if (target_company) break;
+    }
+  }
+
+  const firstName =
+    pickNonEmptyString(apolloLead?.first_name, triggerCtx?.first_name) ||
+    (triggerNode ? getNodeDataString(triggerNode, "first_name") : null);
+  const lastName =
+    pickNonEmptyString(apolloLead?.last_name, triggerCtx?.last_name) ||
+    (triggerNode ? getNodeDataString(triggerNode, "last_name") : null);
+  const prospect_name =
+    pickNonEmptyString(
+      firstName && lastName ? `${firstName} ${lastName}` : null,
+      firstName,
+      triggerCtx?.prospect_name,
+    ) || "Prospect";
+
+  const target_role =
+    pickNonEmptyString(
+      apolloLead?.title,
+      triggerCtx?.title,
+      triggerCtx?.target_role,
+    ) ||
+    (triggerNode
+      ? getNodeDataString(triggerNode, "title") ||
+        getNodeDataString(triggerNode, "target_role")
+      : null);
+
+  return {
+    email,
+    prospect_name,
+    target_company,
+    target_role,
+  };
+}
+
+async function resolveTargetCompanyForQueueInsert(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  queueLead: ReturnType<typeof resolveQueueLeadProfile>,
+): Promise<string | null> {
+  if (queueLead.target_company) {
+    return queueLead.target_company;
+  }
+
+  const fromDb = await fetchLeadMergeFieldsFromDb(
+    supabaseAdmin,
+    clientId,
+    queueLead.email,
+  );
+  if (!fromDb) {
+    return null;
+  }
+
+  return (
+    pickNonEmptyString(fromDb.target_company, fromDb.company, fromDb.company_name) ??
+    null
+  );
+}
+
 function sortNodesByEdges(nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const inDegree = new Map<string, number>();
@@ -1322,10 +1434,30 @@ serve(async (req) => {
               triggeredAt: new Date().toISOString(),
             };
 
+            const crmFirstName = getNodeDataString(node, "first_name");
+            const crmLastName = getNodeDataString(node, "last_name");
+            const crmCompany =
+              getNodeDataString(node, "company") ||
+              getNodeDataString(node, "company_name") ||
+              getNodeDataString(node, "target_company");
+            const crmTitle =
+              getNodeDataString(node, "title") || getNodeDataString(node, "target_role");
+            const crmProspectName = getNodeDataString(node, "prospect_name");
+
+            if (crmFirstName) payload.first_name = crmFirstName;
+            if (crmLastName) payload.last_name = crmLastName;
+            if (crmCompany) {
+              payload.company = crmCompany;
+              payload.target_company = crmCompany;
+            }
+            if (crmTitle) payload.title = crmTitle;
+            if (crmProspectName) payload.prospect_name = crmProspectName;
+
             if (bulkInjected) {
               payload.first_name = getNodeDataString(node, "first_name") || "there";
               payload.last_name = getNodeDataString(node, "last_name");
               payload.company = getNodeDataString(node, "company") || "their company";
+              payload.target_company = payload.company;
               payload.title = getNodeDataString(node, "title") || "Leader";
               payload.bulkInjected = true;
             }
@@ -1465,11 +1597,13 @@ serve(async (req) => {
             const bodyText = resolveSanitizedEmailBody(node, sortedNodes, context);
             const rawSubject = getNodeDataString(node, "subject", DEFAULT_RESEND_SUBJECT);
             const subject = interpolate(rawSubject, context);
-            const lead = findApolloLead(context, sortedNodes);
-            const leadEmail = lead?.email?.trim() || testEmail;
-            const prospectName = lead
-              ? `${lead.first_name} ${lead.last_name}`.trim() || lead.first_name
-              : "Prospect";
+            const queueLead = resolveQueueLeadProfile(context, sortedNodes, testEmail);
+            const leadEmail = queueLead.email;
+            const targetCompany = await resolveTargetCompanyForQueueInsert(
+              supabaseAdmin,
+              clientId,
+              queueLead,
+            );
 
             const reviewerNode = sortedNodes.find((candidate) => candidate.type === "copy_reviewer");
             const reviewerCtx = reviewerNode ? context[reviewerNode.id] : null;
@@ -1505,9 +1639,9 @@ serve(async (req) => {
               {
                 client_id: clientId,
                 email: leadEmail,
-                prospect_name: prospectName,
-                target_company: lead?.company?.trim() || null,
-                target_role: lead?.title ?? null,
+                prospect_name: queueLead.prospect_name,
+                target_company: targetCompany,
+                target_role: queueLead.target_role,
                 generated_copy: bodyText,
                 campaign_status: "PENDING_REVIEW",
                 queue_status: queueStatus,
