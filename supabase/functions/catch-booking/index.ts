@@ -1,5 +1,90 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { alertLeadsChannel } from "../_shared/alerting.ts";
+
+function readAttendeeName(payload: Record<string, unknown>): string {
+  const attendees = payload.attendees;
+  if (Array.isArray(attendees) && attendees.length > 0) {
+    const first = attendees[0] as Record<string, unknown>;
+    if (typeof first.name === "string" && first.name.trim()) return first.name.trim();
+    const firstName = typeof first.firstName === "string" ? first.firstName.trim() : "";
+    const lastName = typeof first.lastName === "string" ? first.lastName.trim() : "";
+    const combined = `${firstName} ${lastName}`.trim();
+    if (combined) return combined;
+  }
+
+  const responses = payload.responses as Record<string, unknown> | undefined;
+  const nameResponse = responses?.name as { value?: unknown } | undefined;
+  if (typeof nameResponse?.value === "string" && nameResponse.value.trim()) {
+    return nameResponse.value.trim();
+  }
+
+  return "Unknown Lead";
+}
+
+function readAttendeeEmail(payload: Record<string, unknown>): string {
+  const attendees = payload.attendees;
+  if (Array.isArray(attendees) && attendees.length > 0) {
+    const first = attendees[0] as Record<string, unknown>;
+    if (typeof first.email === "string" && first.email.trim()) return first.email.trim();
+  }
+
+  const responses = payload.responses as Record<string, unknown> | undefined;
+  const emailResponse = responses?.email as { value?: unknown } | undefined;
+  if (typeof emailResponse?.value === "string" && emailResponse.value.trim()) {
+    return emailResponse.value.trim();
+  }
+
+  return "no-email@provided.com";
+}
+
+function readAttendeeCompany(payload: Record<string, unknown>): string {
+  const responses = payload.responses as Record<string, unknown> | undefined;
+  const companyResponse =
+    (responses?.company as { value?: unknown } | undefined) ??
+    (responses?.Company as { value?: unknown } | undefined);
+  if (typeof companyResponse?.value === "string" && companyResponse.value.trim()) {
+    return companyResponse.value.trim();
+  }
+  return "Unknown Company";
+}
+
+async function notifyBookingSlack(
+  clientWebhook: string | null | undefined,
+  message: string,
+  blocks: Record<string, unknown>[],
+): Promise<{ ok: boolean; source: string; error?: string }> {
+  if (clientWebhook?.trim()) {
+    const slackResponse = await fetch(clientWebhook.trim(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blocks }),
+    });
+
+    if (slackResponse.ok) {
+      return { ok: true, source: "client_webhook" };
+    }
+
+    const slackBody = await slackResponse.text();
+    console.error("SLACK_WEBHOOK_FAILED:", slackResponse.status, slackBody);
+    return {
+      ok: false,
+      source: "client_webhook",
+      error: `Slack webhook failed (${slackResponse.status})`,
+    };
+  }
+
+  const platform = await alertLeadsChannel(message);
+  if (platform.ok) {
+    return { ok: true, source: "platform_env" };
+  }
+
+  return {
+    ok: false,
+    source: "none",
+    error: platform.error ?? "No Slack webhook configured on client or platform env",
+  };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok");
@@ -20,12 +105,14 @@ serve(async (req) => {
       });
     }
 
-    const leadName = body.payload?.attendees?.[0]?.name || "Unknown Lead";
-    const leadEmail = body.payload?.attendees?.[0]?.email || "no-email@provided.com";
-    const leadCompany =
-      body.payload?.responses?.company?.value ||
-      body.payload?.responses?.Company?.value ||
-      "Unknown Company";
+    const payload =
+      body.payload && typeof body.payload === "object"
+        ? (body.payload as Record<string, unknown>)
+        : {};
+
+    const leadName = readAttendeeName(payload);
+    const leadEmail = readAttendeeEmail(payload);
+    const leadCompany = readAttendeeCompany(payload);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -91,42 +178,36 @@ serve(async (req) => {
       console.error("[catch-booking] meetings_booked increment failed:", meetingsError.message);
     }
 
-    if (client.slack_webhook_url) {
-      const crmLine = notionPageUrl
-        ? `*CRM Link:* <${notionPageUrl}|View Dossier in Notion>`
-        : "*CRM:* Notion not configured for this workspace";
+    const crmLine = notionPageUrl
+      ? `*CRM Link:* <${notionPageUrl}|View Dossier in Notion>`
+      : "*CRM:* Notion not configured for this workspace";
 
-      const slackResponse = await fetch(client.slack_webhook_url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blocks: [
-            {
-              type: "header",
-              text: { type: "plain_text", text: "Discovery Call Booked", emoji: true },
-            },
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `*Lead:* ${leadName}\n*Company:* ${leadCompany}\n*Email:* ${leadEmail}`,
-              },
-            },
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: crmLine,
-              },
-            },
-          ],
-        }),
-      });
+    const slackMessage = `Discovery call booked\nLead: ${leadName}\nCompany: ${leadCompany}\nEmail: ${leadEmail}`;
 
-      if (!slackResponse.ok) {
-        const slackBody = await slackResponse.text();
-        console.error("SLACK_WEBHOOK_FAILED:", slackResponse.status, slackBody);
-      }
+    const slackResult = await notifyBookingSlack(
+      client.slack_webhook_url,
+      slackMessage,
+      [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Discovery Call Booked", emoji: true },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Lead:* ${leadName}\n*Company:* ${leadCompany}\n*Email:* ${leadEmail}`,
+          },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: crmLine },
+        },
+      ],
+    );
+
+    if (!slackResult.ok) {
+      console.warn("[catch-booking] Slack notification failed:", slackResult.error);
     }
 
     return new Response(
@@ -134,6 +215,9 @@ serve(async (req) => {
         success: true,
         url: notionPageUrl,
         meetingsBooked: priorMeetings + 1,
+        slackNotified: slackResult.ok,
+        slackSource: slackResult.source,
+        slackError: slackResult.error ?? null,
       }),
       {
         headers: { "Content-Type": "application/json" },

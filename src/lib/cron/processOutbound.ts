@@ -33,7 +33,7 @@ async function loadClientSendingConfig(
 
   const { data, error } = await getCronSupabase()
     .from("clients")
-    .select("company_name, sending_domain")
+    .select("company_name, sending_domain, primary_contact_email")
     .eq("id", clientId)
     .maybeSingle();
 

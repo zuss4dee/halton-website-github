@@ -13,6 +13,7 @@ import {
   type LeadMergeFields,
 } from "../_shared/leadMergeVariables.ts";
 import { appendOutboundFounderSignature } from "../_shared/outboundSignature.ts";
+import { resolveOutboundFromEmail } from "../_shared/resolveOutboundFrom.ts";
 import {
   buildExecutiveOverrideNodeOutput,
   shouldReusePriorContext,
@@ -84,6 +85,39 @@ const DEFAULT_RESEND_BODY = "{{steps.REVIEWER_NODE.copy}}\n\nLet's chat.\n- Dami
 
 /** Sandbox mode: all outbound sends route here during testing — never to real leads. */
 const SANDBOX_TO_EMAIL = "adedamilare1@gmail.com";
+
+function isOutboundSandbox(): boolean {
+  return Deno.env.get("OUTBOUND_SANDBOX")?.trim().toLowerCase() === "true";
+}
+
+function resolveOutboundSendTarget(intendedRecipient: string): {
+  to: string;
+  subjectPrefix: string;
+  sandbox: boolean;
+} {
+  if (isOutboundSandbox()) {
+    return {
+      to: SANDBOX_TO_EMAIL,
+      subjectPrefix: `[SANDBOX: ${intendedRecipient}] `,
+      sandbox: true,
+    };
+  }
+  return { to: intendedRecipient, subjectPrefix: "", sandbox: false };
+}
+
+async function loadOutboundFromEmail(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("clients")
+    .select("company_name, sending_domain, primary_contact_email")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  if (!data) return null;
+  return resolveOutboundFromEmail(data);
+}
 
 const DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS = `STRICT NEGATIVE CONSTRAINTS (violating any rule = failed output):
 1. FATAL ERROR IF: You include the word "Subject:" or the actual subject line in your output. Output ONLY the body copy.
@@ -1052,6 +1086,7 @@ async function resolveLeadMergeFieldsForSend(
 
 async function runResend(
   keys: VaultKeys,
+  from: string,
   to: string,
   subject: string,
   textBody: string,
@@ -1062,7 +1097,7 @@ async function runResend(
     : { subject, body: textBody };
   const signedBody = appendOutboundFounderSignature(personalized.body);
   const requestBody = {
-    from: "Damilare Adeosun <damilare@haltonworks.com>",
+    from,
     to,
     subject: personalized.subject,
     text: signedBody,
@@ -1276,11 +1311,19 @@ serve(async (req) => {
         );
       }
 
-      const subject = `[SANDBOX: ${recipientEmail}] ${originalSubject}`;
+      const sendTarget = resolveOutboundSendTarget(recipientEmail);
+      const subject = `${sendTarget.subjectPrefix}${originalSubject}`;
+      const fromEmail = (await loadOutboundFromEmail(supabaseAdmin, clientId)) ??
+        "Damilare Adeosun <damilare@haltonworks.com>";
 
-      const resendResult = await runResend(keys, SANDBOX_TO_EMAIL, subject, textBody, {
-        mergeFields,
-      });
+      const resendResult = await runResend(
+        keys,
+        fromEmail,
+        sendTarget.to,
+        subject,
+        textBody,
+        { mergeFields },
+      );
       const personalizedBody = personalizeOutboundEmailContent(
         originalSubject,
         textBody,
@@ -1759,11 +1802,15 @@ serve(async (req) => {
               context,
               mergeFields,
             );
-            const subject = `[SANDBOX: ${intendedRecipient}] ${personalizedSubject}`;
+            const sendTarget = resolveOutboundSendTarget(intendedRecipient);
+            const subject = `${sendTarget.subjectPrefix}${personalizedSubject}`;
+            const fromEmail = (await loadOutboundFromEmail(supabaseAdmin, clientId)) ??
+              "Damilare Adeosun <damilare@haltonworks.com>";
 
             const resendResult = await runResend(
               keys,
-              SANDBOX_TO_EMAIL,
+              fromEmail,
+              sendTarget.to,
               subject,
               bodyText,
               { nodeId: node.id, intendedRecipient, mergeFields },
@@ -1771,7 +1818,7 @@ serve(async (req) => {
 
             context[node.id] = {
               ...resendResult,
-              sandbox: true,
+              sandbox: sendTarget.sandbox,
               intendedRecipient,
             };
             executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
