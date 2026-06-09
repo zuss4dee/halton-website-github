@@ -23,6 +23,14 @@ export const WORKFLOW_EXECUTOR_TYPES = [
 
 export type WorkflowExecutorType = (typeof WORKFLOW_EXECUTOR_TYPES)[number];
 
+export const HALTON_SAAS_WRITER_PROMPT =
+  "Write a casual, 2-3 sentence cold email to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Reference a specific challenge B2B SaaS founders face: outbound pipeline bottlenecks or primary-domain deliverability risk. Position permanent revenue infrastructure (not an agency). End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+
+export const HALTON_APOLLO_ICP = {
+  location: "United Kingdom, United States",
+  title: "Founder, CEO, Co-Founder",
+} as const;
+
 export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
   nodes: [
     {
@@ -39,8 +47,8 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
       position: { x: 250, y: 160 },
       data: {
         label: "[ APOLLO ] - Search & Enrich Lead",
-        location: "United Kingdom",
-        title: "Agency Director, Founder",
+        location: HALTON_APOLLO_ICP.location,
+        title: HALTON_APOLLO_ICP.title,
       },
     },
     {
@@ -49,8 +57,7 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
       position: { x: 250, y: 280 },
       data: {
         label: "DeepSeek Writer",
-        prompt:
-          "Write a casual, 2-sentence cold email opening line to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Acknowledge their role and ask if they are currently taking on new clients. Do not include placeholders or signature blocks.",
+        prompt: HALTON_SAAS_WRITER_PROMPT,
       },
     },
     {

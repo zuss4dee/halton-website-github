@@ -31,45 +31,71 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: client } = await supabase
+    const { data: client, error: clientError } = await supabase
       .from("clients")
-      .select("notion_api_key, notion_database_id, slack_webhook_url")
+      .select("notion_api_key, notion_database_id, slack_webhook_url, meetings_booked")
       .eq("id", clientId)
       .single();
 
-    if (!client?.notion_api_key || !client?.notion_database_id) {
-      throw new Error("Missing Notion Keys in Vault");
+    if (clientError || !client) {
+      throw new Error(clientError?.message ?? "Client not found");
     }
 
-    const notionResponse = await fetch("https://api.notion.com/v1/pages", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${client.notion_api_key}`,
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-      },
-      body: JSON.stringify({
-        parent: { database_id: client.notion_database_id },
-        properties: {
-          "Lead Name": { title: [{ text: { content: leadName } }] },
-          Company: { rich_text: [{ text: { content: leadCompany } }] },
-          Email: { email: leadEmail },
-          Status: { status: { name: "Incoming" } },
+    let notionPageUrl: string | null = null;
+
+    if (client.notion_api_key && client.notion_database_id) {
+      const notionResponse = await fetch("https://api.notion.com/v1/pages", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${client.notion_api_key}`,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28",
         },
-      }),
-    });
+        body: JSON.stringify({
+          parent: { database_id: client.notion_database_id },
+          properties: {
+            "Lead Name": { title: [{ text: { content: leadName } }] },
+            Company: { rich_text: [{ text: { content: leadCompany } }] },
+            Email: { email: leadEmail },
+            Status: { status: { name: "Incoming" } },
+          },
+        }),
+      });
 
-    const result = await notionResponse.json();
+      const result = await notionResponse.json();
 
-    if (!notionResponse.ok) {
-      const message =
-        typeof result === "object" && result !== null && "message" in result
-          ? String((result as { message: string }).message)
-          : "Notion API request failed";
-      throw new Error(message);
+      if (!notionResponse.ok) {
+        const message =
+          typeof result === "object" && result !== null && "message" in result
+            ? String((result as { message: string }).message)
+            : "Notion API request failed";
+        console.error("[catch-booking] Notion write failed:", message);
+      } else if (typeof result === "object" && result !== null && "url" in result) {
+        notionPageUrl = String((result as { url: string }).url);
+      }
+    } else {
+      console.warn("[catch-booking] Notion keys not configured — skipping CRM write");
     }
 
-    if (client.slack_webhook_url && result.url) {
+    const priorMeetings =
+      typeof client.meetings_booked === "number" && Number.isFinite(client.meetings_booked)
+        ? client.meetings_booked
+        : 0;
+
+    const { error: meetingsError } = await supabase
+      .from("clients")
+      .update({ meetings_booked: priorMeetings + 1 })
+      .eq("id", clientId);
+
+    if (meetingsError) {
+      console.error("[catch-booking] meetings_booked increment failed:", meetingsError.message);
+    }
+
+    if (client.slack_webhook_url) {
+      const crmLine = notionPageUrl
+        ? `*CRM Link:* <${notionPageUrl}|View Dossier in Notion>`
+        : "*CRM:* Notion not configured for this workspace";
+
       const slackResponse = await fetch(client.slack_webhook_url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,7 +103,7 @@ serve(async (req) => {
           blocks: [
             {
               type: "header",
-              text: { type: "plain_text", text: "🔥 Discovery Call Booked", emoji: true },
+              text: { type: "plain_text", text: "Discovery Call Booked", emoji: true },
             },
             {
               type: "section",
@@ -90,7 +116,7 @@ serve(async (req) => {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: `*CRM Link:* <${result.url}|View Dossier in Notion>`,
+                text: crmLine,
               },
             },
           ],
@@ -103,9 +129,16 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, url: result.url }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        url: notionPageUrl,
+        meetingsBooked: priorMeetings + 1,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   } catch (error: unknown) {
     console.error("[ WEBHOOK ERROR ]", error);
     const message = error instanceof Error ? error.message : "Unknown error";

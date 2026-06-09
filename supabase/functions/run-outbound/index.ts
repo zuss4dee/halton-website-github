@@ -74,7 +74,10 @@ Rules:
 - needs_human_review: ambiguous edge cases or uncertain brand fit`;
 
 const DEFAULT_DEEPSEEK_PROMPT =
-  "Write a casual, 2-sentence cold email opening line to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Acknowledge their role and ask if they are currently taking on new clients. Do not include placeholders or signature blocks.";
+  "Write a casual, 2-3 sentence cold email to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Reference a specific challenge B2B SaaS founders face: outbound pipeline bottlenecks or primary-domain deliverability risk. Position permanent revenue infrastructure (not an agency). End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+
+const DEFAULT_APOLLO_TITLES = ["Founder", "CEO", "Co-Founder"];
+const DEFAULT_APOLLO_LOCATIONS = ["United Kingdom", "United States"];
 
 const DEFAULT_RESEND_SUBJECT = "Quick question for {{company_name}}";
 const DEFAULT_RESEND_BODY = "{{steps.REVIEWER_NODE.copy}}\n\nLet's chat.\n- Damilare";
@@ -506,7 +509,15 @@ function buildDefaultWorkflow(testEmail: string): { nodes: FlowNode[]; edges: Fl
   return {
     nodes: [
       { id: "trigger-1", type: "trigger", data: { testEmail } },
-      { id: "apollo-1", type: "apollo_search" },
+      {
+        id: "apollo-1",
+        type: "apollo_search",
+        data: {
+          label: "[ APOLLO ] - Search & Enrich Lead",
+          location: DEFAULT_APOLLO_LOCATIONS.join(", "),
+          title: DEFAULT_APOLLO_TITLES.join(", "),
+        },
+      },
       {
         id: "llm-1",
         type: "deepseek_llm",
@@ -577,25 +588,39 @@ async function parseJsonResponse(response: Response, step: string): Promise<unkn
   return data;
 }
 
-function apolloFallbackMockLead(): EnrichedTarget {
-  return {
-    apollo_person_id: "mock-tier-limit-fallback",
-    first_name: "James",
-    last_name: "Holden",
-    title: "VP of Operations",
-    company: "FastFreight UK",
-    email: "james.mock@example.com",
-  };
+function parseCommaSeparatedList(value: string): string[] {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
-function logApolloFallback(response: Response | null, reason?: string) {
+function resolveApolloSearchFilters(node: FlowNode): {
+  personTitles: string[];
+  personLocations: string[];
+} {
+  const titleRaw = getNodeDataString(node, "title");
+  const locationRaw = getNodeDataString(node, "location");
+
+  const personTitles = titleRaw
+    ? parseCommaSeparatedList(titleRaw)
+    : DEFAULT_APOLLO_TITLES;
+  const personLocations = locationRaw
+    ? parseCommaSeparatedList(locationRaw)
+    : DEFAULT_APOLLO_LOCATIONS;
+
+  return { personTitles, personLocations };
+}
+
+function apolloSearchError(response: Response | null, reason?: string): Error {
   if (response?.status === 403) {
-    console.warn("[apollo_search] 403 encountered, falling back to mock lead data.");
-    return;
+    return new Error(
+      "[apollo_search] Apollo API returned 403 — check API key tier and credits. Pipeline halted (no mock fallback in production).",
+    );
   }
 
   const status = response ? `HTTP ${response.status}` : reason ?? "request failed";
-  console.warn(`[apollo_search] ${status}, falling back to mock lead data.`);
+  return new Error(`[apollo_search] ${status}. Pipeline halted (no mock fallback in production).`);
 }
 
 async function parseJsonBody(response: Response): Promise<unknown> {
@@ -612,6 +637,7 @@ async function runApolloSearch(
   keys: VaultKeys,
   testEmail: string,
   useLiveApollo: boolean,
+  node: FlowNode,
 ): Promise<EnrichedTarget> {
   if (!useLiveApollo) {
     const mock: EnrichedTarget = {
@@ -619,83 +645,79 @@ async function runApolloSearch(
       email: testEmail,
       first_name: "James",
       last_name: "Bond",
-      title: "Agency Director",
-      company: "MI6 Marketing",
+      title: "CEO",
+      company: "Example SaaS Co",
     };
-    console.info("[apollo_search] MOCK lead:", mock);
+    console.info("[apollo_search] MOCK lead (safemode — no Apollo key):", mock);
     return mock;
   }
 
-  try {
-    const searchResponse = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
-      method: "POST",
-      headers: {
-        "Cache-Control": "no-cache",
-        "Content-Type": "application/json",
-        "x-api-key": keys.apollo_api_key!,
-      },
-      body: JSON.stringify({
-        person_titles: ["Agency Director", "Founder"],
-        person_locations: ["United Kingdom"],
-        per_page: 1,
-      }),
-    });
+  const { personTitles, personLocations } = resolveApolloSearchFilters(node);
+  console.info("[apollo_search] filters", { personTitles, personLocations });
 
-    if (!searchResponse.ok) {
-      logApolloFallback(searchResponse);
-      return apolloFallbackMockLead();
-    }
+  const searchResponse = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
+    method: "POST",
+    headers: {
+      "Cache-Control": "no-cache",
+      "Content-Type": "application/json",
+      "x-api-key": keys.apollo_api_key!,
+    },
+    body: JSON.stringify({
+      person_titles: personTitles,
+      person_locations: personLocations,
+      per_page: 1,
+    }),
+  });
 
-    const searchData = (await parseJsonBody(searchResponse)) as {
-      people?: Array<{ id?: string }>;
-    };
-
-    const firstPerson = searchData.people?.[0];
-    if (!firstPerson?.id) {
-      console.warn("[apollo_search] No person id in search results, falling back to mock lead data.");
-      return apolloFallbackMockLead();
-    }
-
-    const enrichResponse = await fetch("https://api.apollo.io/api/v1/people/match", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-cache",
-        "x-api-key": keys.apollo_api_key!,
-      },
-      body: JSON.stringify({ id: firstPerson.id }),
-    });
-
-    if (!enrichResponse.ok) {
-      logApolloFallback(enrichResponse);
-      return apolloFallbackMockLead();
-    }
-
-    const enrichData = (await parseJsonBody(enrichResponse)) as {
-      person?: Record<string, unknown>;
-    };
-
-    const person = enrichData.person ?? (enrichData as Record<string, unknown>);
-    const org = person.organization as { name?: string } | undefined;
-
-    return {
-      apollo_person_id: firstPerson.id,
-      email: typeof person.email === "string" ? person.email : null,
-      first_name: typeof person.first_name === "string" ? person.first_name : "there",
-      last_name: typeof person.last_name === "string" ? person.last_name : "",
-      title: typeof person.title === "string" ? person.title : "Leader",
-      company:
-        typeof org?.name === "string"
-          ? org.name
-          : typeof person.organization_name === "string"
-            ? person.organization_name
-            : "their company",
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    logApolloFallback(null, message);
-    return apolloFallbackMockLead();
+  if (!searchResponse.ok) {
+    throw apolloSearchError(searchResponse);
   }
+
+  const searchData = (await parseJsonBody(searchResponse)) as {
+    people?: Array<{ id?: string }>;
+  };
+
+  const firstPerson = searchData.people?.[0];
+  if (!firstPerson?.id) {
+    throw new Error(
+      "[apollo_search] No matching prospects for configured ICP filters. Pipeline halted.",
+    );
+  }
+
+  const enrichResponse = await fetch("https://api.apollo.io/api/v1/people/match", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      "x-api-key": keys.apollo_api_key!,
+    },
+    body: JSON.stringify({ id: firstPerson.id }),
+  });
+
+  if (!enrichResponse.ok) {
+    throw apolloSearchError(enrichResponse);
+  }
+
+  const enrichData = (await parseJsonBody(enrichResponse)) as {
+    person?: Record<string, unknown>;
+  };
+
+  const person = enrichData.person ?? (enrichData as Record<string, unknown>);
+  const org = person.organization as { name?: string } | undefined;
+
+  return {
+    apollo_person_id: firstPerson.id,
+    email: typeof person.email === "string" ? person.email : null,
+    first_name: typeof person.first_name === "string" ? person.first_name : "there",
+    last_name: typeof person.last_name === "string" ? person.last_name : "",
+    title: typeof person.title === "string" ? person.title : "Leader",
+    company:
+      typeof org?.name === "string"
+        ? org.name
+        : typeof person.organization_name === "string"
+          ? person.organization_name
+          : "their company",
+  };
 }
 
 async function runLlmCompletion(
@@ -1502,14 +1524,13 @@ serve(async (req) => {
               break;
             }
 
-            const lead = await runApolloSearch(keys, testEmail, useLiveApollo);
+            const lead = await runApolloSearch(keys, testEmail, useLiveApollo, node);
             const safemodeLead = { ...lead, email: testEmail };
             context[node.id] = safemodeLead;
-            const usedFallback = lead.apollo_person_id === "mock-tier-limit-fallback";
             executionLog.push({
               nodeId: node.id,
               type: nodeType,
-              status: usedFallback ? "fallback" : "ok",
+              status: "ok",
             });
             console.info(`[${node.id}] apollo_search`, safemodeLead);
             stepResult = safemodeLead;

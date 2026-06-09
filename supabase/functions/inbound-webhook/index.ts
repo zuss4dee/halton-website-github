@@ -18,8 +18,8 @@ const NOTION_COLUMNS = {
   LEAD_NAME: "Lead Name",
 } as const;
 
-/** TEMPORARY: set false after Slack/Notion brute-force test */
-const TEMPORARY_BYPASS = true;
+/** Production: full DB lookup, sequence kill switch, Slack alerts. */
+const TEMPORARY_BYPASS = false;
 
 type LeadMatch = {
   id: string;
@@ -394,12 +394,32 @@ serve(async (req) => {
     let replyRow: { id: string; created_at: string } | null = null;
 
     if (!TEMPORARY_BYPASS) {
+      const { data: existingLead } = await supabaseAdmin
+        .from("leads")
+        .select("form_data")
+        .eq("id", lead!.id)
+        .maybeSingle();
+
+      const priorFormData =
+        existingLead?.form_data && typeof existingLead.form_data === "object"
+          ? (existingLead.form_data as Record<string, unknown>)
+          : {};
+
+      const form_data = {
+        ...priorFormData,
+        inbound_reply: replyText || null,
+        inbound_received_at: now,
+      };
+
       const { error: leadUpdateError } = await supabaseAdmin
         .from("leads")
         .update({
           status: "replied",
+          queue_status: "completed",
+          next_send_date: null,
           last_activity: now,
           is_hot_lead: isHotLead,
+          form_data,
         })
         .eq("id", lead!.id);
 
