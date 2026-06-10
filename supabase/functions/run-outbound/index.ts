@@ -19,6 +19,11 @@ import {
   buildExecutiveOverrideNodeOutput,
   shouldReusePriorContext,
 } from "../_shared/executiveOverride.ts";
+import {
+  normalizeResearchUrl,
+  pickResearchUrlFromLead,
+  scrapeUrlWithFirecrawl,
+} from "../_shared/firecrawlScrape.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +50,9 @@ type EnrichedTarget = {
   title: string;
   company: string;
   apollo_person_id: string;
+  website?: string;
+  research_url?: string;
+  linkedin_url?: string;
 };
 
 type ExecutionContext = Record<string, unknown>;
@@ -76,7 +84,13 @@ Rules:
 - needs_human_review: ambiguous edge cases or uncertain brand fit`;
 
 const DEFAULT_DEEPSEEK_PROMPT =
-  "Write a casual, 2-3 sentence cold email to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Reference a specific challenge B2B SaaS founders face: outbound pipeline bottlenecks or primary-domain deliverability risk. Position permanent revenue infrastructure (not an agency). End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+  "Write a casual, 2-3 sentence cold email to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Ground your hook in this company research (never invent facts): {{steps.RESEARCH_NODE.brief}}. If research is empty, stay specific to name, role, and company only. End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+
+const DEFAULT_RESEARCH_CONDENSER_PROMPT = `You condense scraped company web content into a short research brief for cold email personalization.
+Output plain text only (2-4 bullet points or short sentences). Include: what they sell, who they serve, one specific outreach hook.
+Never invent facts not present in the scrape. If the scrape is thin, say so briefly.`;
+
+const DEFAULT_RESEARCH_AGENT_ROLE = "COMPANY_RESEARCHER";
 
 const DEFAULT_APOLLO_TITLES = ["Founder", "CEO", "Co-Founder"];
 const DEFAULT_APOLLO_LOCATIONS = ["United Kingdom", "United States"];
@@ -324,6 +338,153 @@ function getNodeDataString(node: FlowNode, key: string, fallback = ""): string {
   return fallback;
 }
 
+function findApolloLeadContext(
+  sortedNodes: FlowNode[],
+  context: ExecutionContext,
+): Record<string, unknown> | null {
+  for (const node of sortedNodes) {
+    if (node.type !== "apollo_search") continue;
+    const output = context[node.id];
+    if (output && typeof output === "object" && !Array.isArray(output)) {
+      return output as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
+function resolveResearchTargetUrl(
+  node: FlowNode,
+  context: ExecutionContext,
+  sortedNodes: FlowNode[],
+): string {
+  const urlTemplate = getNodeDataString(node, "url");
+  const interpolated = urlTemplate ? interpolate(urlTemplate, context).trim() : "";
+  const normalizedInterpolated = normalizeResearchUrl(interpolated);
+  if (normalizedInterpolated) return normalizedInterpolated;
+
+  const apolloLead = findApolloLeadContext(sortedNodes, context);
+  if (apolloLead) {
+    return pickResearchUrlFromLead(apolloLead);
+  }
+
+  return "";
+}
+
+function findResearchBriefFromContext(
+  sortedNodes: FlowNode[],
+  context: ExecutionContext,
+): { brief: string; url: string } {
+  for (const node of sortedNodes) {
+    if (node.type !== "agent_research") continue;
+    const output = context[node.id];
+    if (!output || typeof output !== "object" || Array.isArray(output)) continue;
+    const record = output as Record<string, unknown>;
+    return {
+      brief: typeof record.brief === "string" ? record.brief : "",
+      url: typeof record.url === "string" ? record.url : "",
+    };
+  }
+  return { brief: "", url: "" };
+}
+
+async function runAgentResearch(
+  keys: VaultKeys,
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  node: FlowNode,
+  context: ExecutionContext,
+  sortedNodes: FlowNode[],
+): Promise<Record<string, unknown>> {
+  const targetUrl = resolveResearchTargetUrl(node, context, sortedNodes);
+  const apolloLead = findApolloLeadContext(sortedNodes, context);
+  const company =
+    typeof apolloLead?.company === "string" ? apolloLead.company : "the company";
+
+  if (!targetUrl) {
+    console.warn(`[${node.id}] agent_research skipped — no URL on lead`);
+    return {
+      brief: "",
+      url: "",
+      skipped: true,
+      reason: "no_url",
+      company,
+    };
+  }
+
+  if (!keys.firecrawl_api_key) {
+    console.warn(`[${node.id}] agent_research skipped — missing firecrawl_api_key`);
+    return {
+      brief: "",
+      url: targetUrl,
+      skipped: true,
+      reason: "missing_firecrawl_key",
+      company,
+    };
+  }
+
+  let markdown = "";
+  try {
+    const scrape = await scrapeUrlWithFirecrawl(keys.firecrawl_api_key, targetUrl);
+    markdown = scrape.markdown.slice(0, 12000);
+    console.info(`[${node.id}] agent_research scraped ${targetUrl} (${markdown.length} chars)`);
+  } catch (scrapeError) {
+    const message = scrapeError instanceof Error ? scrapeError.message : String(scrapeError);
+    console.error(`[${node.id}] agent_research scrape failed:`, message);
+    return {
+      brief: "",
+      url: targetUrl,
+      skipped: true,
+      reason: "scrape_failed",
+      error: message.slice(0, 300),
+      company,
+    };
+  }
+
+  const taskInstruction = getNodeDataString(node, "task");
+  const agentId = getNodeDataString(node, "agentId");
+  const agentRole = getNodeDataString(node, "agentRole") || DEFAULT_RESEARCH_AGENT_ROLE;
+
+  const runtime = await fetchAgentRuntimeConfig(supabaseAdmin, clientId, {
+    agentId: agentId || undefined,
+    role: agentId ? undefined : agentRole,
+  });
+
+  const condenseSystem =
+    runtime.systemPrompt.trim() || DEFAULT_RESEARCH_CONDENSER_PROMPT;
+  const condenseConfig: AgentRuntimeConfig = {
+    ...runtime,
+    systemPrompt: condenseSystem,
+  };
+
+  const userPrompt = [
+    `Company: ${company}`,
+    `Source URL: ${targetUrl}`,
+    taskInstruction ? `Task: ${taskInstruction}` : "",
+    "",
+    "Scraped content:",
+    markdown,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let brief = "";
+  try {
+    brief = await runLlmCompletion(keys, condenseConfig, userPrompt, "agent_research");
+  } catch (condenseError) {
+    const message = condenseError instanceof Error ? condenseError.message : String(condenseError);
+    console.error(`[${node.id}] agent_research condense failed:`, message);
+    brief = markdown.slice(0, 800);
+  }
+
+  return {
+    brief: brief.trim(),
+    url: targetUrl,
+    skipped: false,
+    company,
+    agentId: runtime.agentId,
+  };
+}
+
 function findCopyReviewerNodeId(sortedNodes: FlowNode[]): string | null {
   const reviewer = sortedNodes.find((node) => node.type === "copy_reviewer");
   return reviewer?.id ?? null;
@@ -562,12 +723,22 @@ function buildDefaultWorkflow(testEmail: string): { nodes: FlowNode[]; edges: Fl
         },
       },
       {
+        id: "research-1",
+        type: "agent_research",
+        data: {
+          label: "Company Research",
+          url: "{{steps.apollo-1.website}}",
+          task:
+            "Summarize what the company sells, who they serve, and one specific outreach hook. Use only facts from the scrape.",
+        },
+      },
+      {
         id: "llm-1",
         type: "deepseek_llm",
         data: {
           prompt: DEFAULT_DEEPSEEK_PROMPT.replace(/APOLLO_NODE/g, "apollo-1").replace(
-            /LLM_NODE/g,
-            "llm-1",
+            /RESEARCH_NODE/g,
+            "research-1",
           ),
         },
       },
@@ -603,7 +774,8 @@ function buildDefaultWorkflow(testEmail: string): { nodes: FlowNode[]; edges: Fl
     ],
     edges: [
       { id: "e1", source: "trigger-1", target: "apollo-1" },
-      { id: "e2", source: "apollo-1", target: "llm-1" },
+      { id: "e1b", source: "apollo-1", target: "research-1" },
+      { id: "e2", source: "research-1", target: "llm-1" },
       { id: "e3", source: "llm-1", target: "reviewer-1" },
       { id: "e4", source: "reviewer-1", target: "gate-1" },
       { id: "e5", source: "gate-1", target: "email-1" },
@@ -690,6 +862,7 @@ async function runApolloSearch(
       last_name: "Bond",
       title: "CEO",
       company: "Example SaaS Co",
+      website: "https://example.com",
     };
     console.info("[apollo_search] MOCK lead (safemode — no Apollo key):", mock);
     return mock;
@@ -746,7 +919,18 @@ async function runApolloSearch(
   };
 
   const person = enrichData.person ?? (enrichData as Record<string, unknown>);
-  const org = person.organization as { name?: string } | undefined;
+  const org = person.organization as {
+    name?: string;
+    website_url?: string;
+    primary_domain?: string;
+  } | undefined;
+
+  const websiteRaw =
+    (typeof org?.website_url === "string" ? org.website_url : "") ||
+    (typeof org?.primary_domain === "string" ? org.primary_domain : "") ||
+    (typeof person.website_url === "string" ? person.website_url : "");
+
+  const website = normalizeResearchUrl(websiteRaw) ?? "";
 
   return {
     apollo_person_id: firstPerson.id,
@@ -760,6 +944,10 @@ async function runApolloSearch(
         : typeof person.organization_name === "string"
           ? person.organization_name
           : "their company",
+    ...(website ? { website } : {}),
+    ...(typeof person.linkedin_url === "string" && person.linkedin_url.trim()
+      ? { linkedin_url: person.linkedin_url.trim() }
+      : {}),
   };
 }
 
@@ -1591,6 +1779,13 @@ serve(async (req) => {
               payload.target_company = payload.company;
               payload.title = getNodeDataString(node, "title") || "Leader";
               payload.bulkInjected = true;
+
+              const website = getNodeDataString(node, "website");
+              const researchUrl = getNodeDataString(node, "research_url");
+              const linkedinUrl = getNodeDataString(node, "linkedin_url");
+              if (website) payload.website = website;
+              if (researchUrl) payload.research_url = researchUrl;
+              if (linkedinUrl) payload.linkedin_url = linkedinUrl;
             }
 
             context[node.id] = payload;
@@ -1610,6 +1805,25 @@ serve(async (req) => {
 
             if (isBulkInjected && triggerCtx && typeof triggerCtx === "object") {
               const triggerLead = triggerCtx as Record<string, unknown>;
+              const triggerNodeData =
+                triggerNode?.data && typeof triggerNode.data === "object"
+                  ? (triggerNode.data as Record<string, unknown>)
+                  : {};
+
+              const website =
+                (typeof triggerLead.website === "string" ? triggerLead.website : "") ||
+                (typeof triggerNodeData.website === "string" ? triggerNodeData.website : "");
+              const researchUrl =
+                (typeof triggerLead.research_url === "string" ? triggerLead.research_url : "") ||
+                (typeof triggerNodeData.research_url === "string"
+                  ? triggerNodeData.research_url
+                  : "");
+              const linkedinUrl =
+                (typeof triggerLead.linkedin_url === "string" ? triggerLead.linkedin_url : "") ||
+                (typeof triggerNodeData.linkedin_url === "string"
+                  ? triggerNodeData.linkedin_url
+                  : "");
+
               const bulkLead: EnrichedTarget = {
                 apollo_person_id: "bulk-csv-inject",
                 email:
@@ -1625,6 +1839,9 @@ serve(async (req) => {
                   typeof triggerLead.company === "string"
                     ? triggerLead.company
                     : "their company",
+                ...(website.trim() ? { website: website.trim() } : {}),
+                ...(researchUrl.trim() ? { research_url: researchUrl.trim() } : {}),
+                ...(linkedinUrl.trim() ? { linkedin_url: linkedinUrl.trim() } : {}),
               };
               context[node.id] = bulkLead;
               executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
@@ -1643,6 +1860,26 @@ serve(async (req) => {
             });
             console.info(`[${node.id}] apollo_search`, safemodeLead);
             stepResult = safemodeLead;
+            break;
+          }
+
+          case "agent_research": {
+            const researchResult = await runAgentResearch(
+              keys,
+              supabaseAdmin,
+              clientId,
+              node,
+              context,
+              sortedNodes,
+            );
+            context[node.id] = researchResult;
+            executionLog.push({ nodeId: node.id, type: nodeType, status: "ok" });
+            console.info(`[${node.id}] agent_research`, {
+              url: researchResult.url,
+              skipped: researchResult.skipped,
+              briefLength: typeof researchResult.brief === "string" ? researchResult.brief.length : 0,
+            });
+            stepResult = researchResult;
             break;
           }
 
@@ -1803,6 +2040,23 @@ serve(async (req) => {
               ...priorFormData,
               draft_subject: subject,
             };
+
+            const research = findResearchBriefFromContext(sortedNodes, context);
+            const apolloLead = findApolloLeadContext(sortedNodes, context);
+            if (research.brief) {
+              nextFormData.company_brief = research.brief;
+            }
+            if (research.url) {
+              nextFormData.research_url = research.url;
+            }
+            if (apolloLead) {
+              if (typeof apolloLead.website === "string" && apolloLead.website.trim()) {
+                nextFormData.website = apolloLead.website.trim();
+              }
+              if (typeof apolloLead.linkedin_url === "string" && apolloLead.linkedin_url.trim()) {
+                nextFormData.linkedin_url = apolloLead.linkedin_url.trim();
+              }
+            }
 
             if (operatorFeedback) {
               nextFormData.draft_rejection_history = [

@@ -164,8 +164,13 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
           <span className="text-sm text-gray-500">
             Drop CSV here or click to browse
           </span>
-          <p className="mt-2 text-sm text-gray-500">
-            Headers: first_name, last_name, email, company, title
+          <p className="mt-2 max-w-md text-sm text-gray-500">
+            Standard CSV — no Apollo export required. Required:{" "}
+            <code className="text-gray-700">email</code>. Recommended:{" "}
+            <code className="text-gray-700">first_name</code>,{" "}
+            <code className="text-gray-700">company</code>,{" "}
+            <code className="text-gray-700">title</code>,{" "}
+            <code className="text-gray-700">website</code> (for company research).
           </p>
           {fileName ? (
             <p className="mt-3 text-sm font-medium text-gray-700">
@@ -178,7 +183,10 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
       <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
         <p className="text-sm font-medium text-gray-700">Or paste CSV</p>
         <p className="mt-1 text-xs text-gray-500">
-          Include the header row, then your lead rows.
+          Include the header row, then your lead rows. Optional columns:{" "}
+          <code className="text-gray-700">website</code>,{" "}
+          <code className="text-gray-700">research_url</code>,{" "}
+          <code className="text-gray-700">linkedin_url</code> (any link the research step can scrape).
         </p>
         <textarea
           value={pasteText}
@@ -186,7 +194,7 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
           disabled={isProcessing}
           rows={5}
           spellCheck={false}
-          placeholder={`first_name,last_name,email,company,title\nDamilare,Adeosun,adedamilare1@gmail.com,Echt AI,CEO`}
+          placeholder={`first_name,last_name,email,company,title,website\nDamilare,Adeosun,adedamilare1@gmail.com,Echt AI,CEO,https://echt.ai`}
           className="mt-3 w-full resize-y rounded-md border border-gray-200 px-3 py-2 font-mono text-xs text-gray-800 focus:border-gray-400 focus:outline-none disabled:opacity-50"
         />
         <button

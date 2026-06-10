@@ -198,7 +198,8 @@ When the admin pastes raw notes, case study fragments, offer details, or brand t
 --- OUTBOUND EMAIL (DAG ONLY — NO CHAT BYPASS) ---
 To generate ANY email or queue copy for human review, you MUST use build_and_run_automation. The save_draft_email path is deprecated.
 Do NOT delegate email drafting to COPYWRITER or any sub-agent to bypass the DAG.
-Required pipeline: deepseek_llm (label "DeepSeek Writer") -> copy_reviewer (type copy_reviewer, label "Deliverability Chief") -> approval_gate (queues sanitized body) -> resend_email (optional test send).
+Recommended pipeline: apollo_search (or trigger with CSV lead) -> agent_research (optional but required for personalized copy) -> deepseek_llm (label "DeepSeek Writer") -> copy_reviewer (type copy_reviewer, label "Deliverability Chief") -> approval_gate (queues sanitized body) -> resend_email (optional test send).
+agent_research node: set data.url to {{steps.<apollo_id>.website}} (falls back to research_url / linkedin_url on the lead). Optional data.agentId from roster. Writer prompt MUST reference {{steps.<research_id>.brief}} — never hardcode industry-generic pain unless research is empty.
 The 4th node in a 5-step Apollo campaign MUST be type copy_reviewer with data.label exactly "Deliverability Chief" — never "AI Writer".
 approval_gate and resend_email MUST use data.body = {{steps.<reviewer_node_id>.copy}} only.
 `;
@@ -682,7 +683,7 @@ ${CEO_AUTONOMY_RULES}
     }),
     build_and_run_automation: tool({
       description:
-        'ONLY approved path for outbound email generation. Builds a workflow graph, saves the active SOP, and runs run-outbound. REQUIRED FIRST: search_client_knowledge. NEVER use spawn_sub_agent/COPYWRITER to queue emails. STRICT LABELS: every node needs data.label. deepseek_llm -> label exactly "DeepSeek Writer". copy_reviewer -> type MUST be copy_reviewer (NOT deepseek_llm) and label exactly "Deliverability Chief" (never "AI Writer"). 5-step Apollo campaign (node order): (1) trigger, (2) apollo_search, (3) deepseek_llm, (4) copy_reviewer, (5) approval_gate, (6) resend_email optional. 4-step without Apollo: trigger -> deepseek_llm -> copy_reviewer -> approval_gate -> resend_email. STRICT WIRING: copy_reviewer data.draft = {{steps.<writer_id>.copy}}. approval_gate data.body AND resend_email data.body MUST be {{steps.<reviewer_id>.copy}} only — approval_gate writes sanitized copy to the Human Review Queue. Unique ids (writer-1, reviewer-1, gate-1); linear edges.',
+        'ONLY approved path for outbound email generation. Builds a workflow graph, saves the active SOP, and runs run-outbound. REQUIRED FIRST: search_client_knowledge. NEVER use spawn_sub_agent/COPYWRITER to queue emails. STRICT LABELS: every node needs data.label. deepseek_llm -> label exactly "DeepSeek Writer". copy_reviewer -> type MUST be copy_reviewer (NOT deepseek_llm) and label exactly "Deliverability Chief" (never "AI Writer"). Recommended Apollo campaign: (1) trigger, (2) apollo_search, (3) agent_research (data.url={{steps.<apollo_id>.website}}, optional data.agentId), (4) deepseek_llm (prompt uses {{steps.<research_id>.brief}}), (5) copy_reviewer, (6) approval_gate, (7) resend_email optional. STRICT WIRING: copy_reviewer data.draft = {{steps.<writer_id>.copy}}. approval_gate data.body AND resend_email data.body MUST be {{steps.<reviewer_id>.copy}} only. Unique ids (research-1, writer-1, reviewer-1, gate-1); linear edges.',
       inputSchema: z.object({
         clientId: z.string(),
         workflowName: z.string(),
@@ -693,6 +694,7 @@ ${CEO_AUTONOMY_RULES}
             type: z.enum([
               "trigger",
               "apollo_search",
+              "agent_research",
               "deepseek_llm",
               "copy_reviewer",
               "approval_gate",

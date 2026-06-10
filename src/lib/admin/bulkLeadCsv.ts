@@ -4,6 +4,11 @@ export type BulkLeadRow = {
   email: string;
   company: string;
   title: string;
+  /** Company website — preferred research target */
+  website?: string;
+  /** Any URL useful for research (site, LinkedIn, Crunchbase, etc.) */
+  research_url?: string;
+  linkedin_url?: string;
 };
 
 const HEADER_ALIASES: Record<keyof BulkLeadRow, string[]> = {
@@ -12,6 +17,9 @@ const HEADER_ALIASES: Record<keyof BulkLeadRow, string[]> = {
   email: ["email", "email_address", "work_email"],
   company: ["company", "company_name", "organization", "org"],
   title: ["title", "job_title", "role", "position"],
+  website: ["website", "company_website", "domain", "company_domain", "url", "company_url"],
+  research_url: ["research_url", "profile_url", "source_url", "link"],
+  linkedin_url: ["linkedin_url", "linkedin", "linkedin_profile", "person_linkedin_url"],
 };
 
 function normalizeHeader(value: string): string {
@@ -51,6 +59,12 @@ function resolveColumnIndex(headers: string[], field: keyof BulkLeadRow): number
   return headers.findIndex((header) => aliases.includes(header));
 }
 
+function optionalCell(cells: string[], index: number): string | undefined {
+  if (index < 0) return undefined;
+  const value = (cells[index] ?? "").trim();
+  return value || undefined;
+}
+
 export function parseBulkLeadCsv(text: string): BulkLeadRow[] {
   const lines = text.trim().split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length < 2) return [];
@@ -62,6 +76,9 @@ export function parseBulkLeadCsv(text: string): BulkLeadRow[] {
     email: resolveColumnIndex(headers, "email"),
     company: resolveColumnIndex(headers, "company"),
     title: resolveColumnIndex(headers, "title"),
+    website: resolveColumnIndex(headers, "website"),
+    research_url: resolveColumnIndex(headers, "research_url"),
+    linkedin_url: resolveColumnIndex(headers, "linkedin_url"),
   };
 
   if (indexes.email < 0) {
@@ -75,12 +92,19 @@ export function parseBulkLeadCsv(text: string): BulkLeadRow[] {
     const email = (cells[indexes.email] ?? "").trim();
     if (!email) continue;
 
+    const website = optionalCell(cells, indexes.website);
+    const research_url = optionalCell(cells, indexes.research_url);
+    const linkedin_url = optionalCell(cells, indexes.linkedin_url);
+
     leads.push({
       first_name: (indexes.first_name >= 0 ? cells[indexes.first_name] : "")?.trim() || "there",
       last_name: (indexes.last_name >= 0 ? cells[indexes.last_name] : "")?.trim() || "",
       email,
       company: (indexes.company >= 0 ? cells[indexes.company] : "")?.trim() || "their company",
       title: (indexes.title >= 0 ? cells[indexes.title] : "")?.trim() || "Leader",
+      ...(website ? { website } : {}),
+      ...(research_url ? { research_url } : {}),
+      ...(linkedin_url ? { linkedin_url } : {}),
     });
   }
 

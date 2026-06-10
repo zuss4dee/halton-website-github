@@ -4,20 +4,28 @@ export type VaultKeys = {
   apollo_api_key: string | null;
   deepseek_api_key: string;
   resend_api_key: string;
+  firecrawl_api_key: string | null;
 };
 
-const CREDENTIAL_NAMES = ["APOLLO_API_KEY", "DEEPSEEK_API_KEY", "RESEND_API_KEY"] as const;
+const CREDENTIAL_NAMES = [
+  "APOLLO_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "RESEND_API_KEY",
+  "FIRECRAWL_API_KEY",
+] as const;
 
 const CREDENTIAL_TO_COLUMN: Record<(typeof CREDENTIAL_NAMES)[number], keyof VaultKeys> = {
   APOLLO_API_KEY: "apollo_api_key",
   DEEPSEEK_API_KEY: "deepseek_api_key",
   RESEND_API_KEY: "resend_api_key",
+  FIRECRAWL_API_KEY: "firecrawl_api_key",
 };
 
 const ENV_FALLBACKS: Record<keyof VaultKeys, string[]> = {
   apollo_api_key: ["APOLLO_API_KEY", "apollo_api_key"],
   deepseek_api_key: ["DEEPSEEK_API_KEY", "deepseek_api_key", "VITE_DEEPSEEK_API_KEY"],
   resend_api_key: ["RESEND_API_KEY", "resend_api_key", "VITE_RESEND_API_KEY"],
+  firecrawl_api_key: ["FIRECRAWL_API_KEY", "firecrawl_api_key"],
 };
 
 function trimOrEmpty(value: string | null | undefined): string {
@@ -46,7 +54,7 @@ export async function resolveVaultKeys(
 
   const { data: clientData } = await supabaseAdmin
     .from("clients")
-    .select("apollo_api_key, deepseek_api_key, resend_api_key")
+    .select("apollo_api_key, deepseek_api_key, resend_api_key, firecrawl_api_key")
     .eq("id", clientId)
     .maybeSingle();
 
@@ -54,11 +62,13 @@ export async function resolveVaultKeys(
     apollo_api_key: trimOrEmpty(clientData?.apollo_api_key) || null,
     deepseek_api_key: trimOrEmpty(clientData?.deepseek_api_key),
     resend_api_key: trimOrEmpty(clientData?.resend_api_key),
+    firecrawl_api_key: trimOrEmpty(clientData?.firecrawl_api_key) || null,
   };
 
   if (keys.apollo_api_key) sources.apollo_api_key = "clients";
   if (keys.deepseek_api_key) sources.deepseek_api_key = "clients";
   if (keys.resend_api_key) sources.resend_api_key = "clients";
+  if (keys.firecrawl_api_key) sources.firecrawl_api_key = "clients";
 
   const { data: credentialRows } = await supabaseAdmin
     .from("credentials")
@@ -88,8 +98,8 @@ export async function resolveVaultKeys(
     const cred = byName.get(credName);
     if (!cred) continue;
 
-    if (column === "apollo_api_key") {
-      keys.apollo_api_key = cred.value;
+    if (column === "apollo_api_key" || column === "firecrawl_api_key") {
+      keys[column] = cred.value;
     } else {
       keys[column] = cred.value;
     }
@@ -102,8 +112,8 @@ export async function resolveVaultKeys(
     const envValue = readDenoEnv(...ENV_FALLBACKS[column]);
     if (!envValue) continue;
 
-    if (column === "apollo_api_key") {
-      keys.apollo_api_key = envValue;
+    if (column === "apollo_api_key" || column === "firecrawl_api_key") {
+      keys[column] = envValue;
     } else {
       keys[column] = envValue;
     }

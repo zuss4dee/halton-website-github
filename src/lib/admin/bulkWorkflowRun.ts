@@ -57,6 +57,9 @@ export function patchWorkflowForLead(
         last_name: lead.last_name,
         company: lead.company,
         title: lead.title,
+        ...(lead.website ? { website: lead.website } : {}),
+        ...(lead.research_url ? { research_url: lead.research_url } : {}),
+        ...(lead.linkedin_url ? { linkedin_url: lead.linkedin_url } : {}),
         bulkInjected: true,
       },
     };

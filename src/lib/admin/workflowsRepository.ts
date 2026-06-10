@@ -15,6 +15,7 @@ export type WorkflowRow = {
 export const WORKFLOW_EXECUTOR_TYPES = [
   "trigger",
   "apollo_search",
+  "agent_research",
   "deepseek_llm",
   "copy_reviewer",
   "approval_gate",
@@ -23,8 +24,12 @@ export const WORKFLOW_EXECUTOR_TYPES = [
 
 export type WorkflowExecutorType = (typeof WORKFLOW_EXECUTOR_TYPES)[number];
 
-export const HALTON_SAAS_WRITER_PROMPT =
-  "Write a casual, 2-3 sentence cold email to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Reference a specific challenge B2B SaaS founders face: outbound pipeline bottlenecks or primary-domain deliverability risk. Position permanent revenue infrastructure (not an agency). End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+/** Generic writer prompt — CEO/workflow graph should override per workspace via knowledge vault. */
+export const DEFAULT_RESEARCH_AWARE_WRITER_PROMPT =
+  "Write a casual, 2-3 sentence cold email to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Ground your hook in this company research (never invent facts not supported here): {{steps.research-1.brief}}. If the research brief is empty, stay specific to name, role, and company only — do not use generic industry filler. End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+
+/** @deprecated Halton seed only — prefer CEO-built prompts from knowledge vault */
+export const HALTON_SAAS_WRITER_PROMPT = DEFAULT_RESEARCH_AWARE_WRITER_PROMPT;
 
 export const HALTON_APOLLO_ICP = {
   location: "United Kingdom, United States",
@@ -52,18 +57,28 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
       },
     },
     {
+      id: "research-1",
+      type: "agent_research",
+      position: { x: 250, y: 220 },
+      data: {
+        label: "Company Research",
+        url: "{{steps.apollo-1.website}}",
+        task: "Summarize what the company sells, who they serve, and one specific outreach hook. Use only facts from the scrape.",
+      },
+    },
+    {
       id: "llm-1",
       type: "deepseek_llm",
-      position: { x: 250, y: 280 },
+      position: { x: 250, y: 340 },
       data: {
         label: "DeepSeek Writer",
-        prompt: HALTON_SAAS_WRITER_PROMPT,
+        prompt: DEFAULT_RESEARCH_AWARE_WRITER_PROMPT,
       },
     },
     {
       id: "reviewer-1",
       type: "copy_reviewer",
-      position: { x: 250, y: 400 },
+      position: { x: 250, y: 460 },
       data: {
         label: "Deliverability Chief",
         draft: "{{steps.llm-1.copy}}",
@@ -72,7 +87,7 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
     {
       id: "gate-1",
       type: "approval_gate",
-      position: { x: 250, y: 520 },
+      position: { x: 250, y: 580 },
       data: {
         label: "Human Review Queue",
         subject: "Quick question for {{steps.apollo-1.company}}",
@@ -82,7 +97,7 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
     {
       id: "email-1",
       type: "resend_email",
-      position: { x: 250, y: 640 },
+      position: { x: 250, y: 700 },
       data: {
         label: "Send Email",
         to: "{{steps.trigger-1.email}}",
@@ -100,8 +115,15 @@ export const DEFAULT_WORKFLOW_GRAPH: WorkflowGraph = {
       style: { stroke: "#4b5563" },
     },
     {
-      id: "e-apollo-llm",
+      id: "e-apollo-research",
       source: "apollo-1",
+      target: "research-1",
+      animated: true,
+      style: { stroke: "#4b5563" },
+    },
+    {
+      id: "e-research-llm",
+      source: "research-1",
       target: "llm-1",
       animated: true,
       style: { stroke: "#4b5563" },

@@ -14,8 +14,19 @@ export type RegenerateOutboundDraftInput = {
   priorBody?: string;
 };
 
+function readFormString(formData: Record<string, unknown> | null | undefined, key: string): string | undefined {
+  const value = formData?.[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
 export function leadRowToBulkLeadRow(lead: LeadRow): BulkLeadRow {
   const nameParts = (lead.prospect_name ?? "").trim().split(/\s+/).filter(Boolean);
+  const formData =
+    lead.form_data && typeof lead.form_data === "object" && !Array.isArray(lead.form_data)
+      ? lead.form_data
+      : null;
 
   return {
     first_name: nameParts[0] || "there",
@@ -23,6 +34,13 @@ export function leadRowToBulkLeadRow(lead: LeadRow): BulkLeadRow {
     email: lead.email?.trim() ?? "",
     company: lead.target_company?.trim() || "their company",
     title: lead.target_role?.trim() || "Leader",
+    ...(readFormString(formData, "website") ? { website: readFormString(formData, "website") } : {}),
+    ...(readFormString(formData, "research_url")
+      ? { research_url: readFormString(formData, "research_url") }
+      : {}),
+    ...(readFormString(formData, "linkedin_url")
+      ? { linkedin_url: readFormString(formData, "linkedin_url") }
+      : {}),
   };
 }
 

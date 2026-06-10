@@ -12,6 +12,9 @@ export type ToolNodeData = {
   subject?: string;
   body?: string;
   template_id?: string;
+  url?: string;
+  task?: string;
+  agentId?: string;
   runtimeStatus?: "idle" | "running" | "complete";
 };
 
@@ -23,6 +26,8 @@ function executorAccentClass(executorType?: string) {
       return "border-l-emerald-500";
     case "apollo_search":
       return "border-l-cyan-500";
+    case "agent_research":
+      return "border-l-teal-500";
     case "deepseek_llm":
       return "border-l-violet-500";
     case "copy_reviewer":
@@ -42,6 +47,8 @@ function executorBadgeClass(executorType?: string) {
       return "bg-emerald-50 text-emerald-700";
     case "apollo_search":
       return "bg-cyan-50 text-cyan-700";
+    case "agent_research":
+      return "bg-teal-50 text-teal-700";
     case "deepseek_llm":
       return "bg-violet-50 text-violet-700";
     case "copy_reviewer":
@@ -61,6 +68,8 @@ function executorBadgeLabel(executorType?: string) {
       return "Trigger";
     case "apollo_search":
       return "Apollo";
+    case "agent_research":
+      return "Research";
     case "deepseek_llm":
       return "Writer";
     case "copy_reviewer":
@@ -80,6 +89,8 @@ function humanReadableType(executorType?: string): string {
       return "Trigger";
     case "apollo_search":
       return "Apollo Search";
+    case "agent_research":
+      return "Agent Research";
     case "deepseek_llm":
       return "AI Writer";
     case "copy_reviewer":
@@ -105,6 +116,11 @@ function buildContextPreview(executorType: string | undefined, data: ToolNodeDat
   switch (executorType as ExecutorType) {
     case "apollo_search":
       return `Target: ${data.title?.trim() || "Any"}`;
+    case "agent_research": {
+      const url = data.url?.replace(/\s+/g, " ").trim() ?? "";
+      if (!url) return "Scrape company URL";
+      return url.length > 30 ? `${url.slice(0, 30)}…` : url;
+    }
     case "deepseek_llm": {
       const prompt = data.prompt?.replace(/\s+/g, " ").trim() ?? "";
       if (!prompt) return "No prompt configured";

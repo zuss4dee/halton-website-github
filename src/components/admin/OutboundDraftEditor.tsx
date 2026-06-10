@@ -46,6 +46,19 @@ export function OutboundDraftEditor({
     lead,
   );
 
+  const formData =
+    lead.form_data && typeof lead.form_data === "object" && !Array.isArray(lead.form_data)
+      ? lead.form_data
+      : null;
+  const companyBrief =
+    typeof formData?.company_brief === "string" ? formData.company_brief.trim() : "";
+  const researchUrl =
+    typeof formData?.research_url === "string"
+      ? formData.research_url.trim()
+      : typeof formData?.website === "string"
+        ? formData.website.trim()
+        : "";
+
   const insertMergeTag = useCallback(
     (tag: string) => {
       if (readOnly) return;
@@ -82,6 +95,25 @@ export function OutboundDraftEditor({
 
   return (
     <div className="space-y-4">
+      {companyBrief ? (
+        <div className="rounded-lg border border-teal-200 bg-teal-50/60 px-4 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-teal-800">
+            Company research
+            {researchUrl ? (
+              <span className="ml-2 font-normal normal-case text-teal-700">({researchUrl})</span>
+            ) : null}
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-teal-950">
+            {companyBrief}
+          </p>
+        </div>
+      ) : !readOnly ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          No company research on this lead — add a <code className="text-xs">website</code> column to
+          your CSV and re-inject, or use Reject &amp; regenerate after updating the URL.
+        </p>
+      ) : null}
+
       <Tabs defaultValue="edit">
         <TabsList className="h-9 bg-gray-100">
           <TabsTrigger value="edit" className="text-xs sm:text-sm">

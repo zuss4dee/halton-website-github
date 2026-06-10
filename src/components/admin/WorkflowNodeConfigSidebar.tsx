@@ -23,6 +23,7 @@ type WorkflowNodeConfigSidebarProps = {
 const EXECUTOR_LABELS: Record<WorkflowExecutorType, string> = {
   trigger: "Trigger",
   apollo_search: "Apollo Search",
+  agent_research: "Agent Research",
   deepseek_llm: "DeepSeek LLM",
   copy_reviewer: "Deliverability Chief",
   approval_gate: "Human Review Queue",
@@ -118,6 +119,43 @@ export function WorkflowNodeConfigSidebar({
                 value={draftData.title ?? ""}
                 onChange={(event) => applyDataPatch({ title: event.target.value })}
                 placeholder="Agency Director, Founder"
+              />
+            </label>
+          </>
+        ) : null}
+
+        {draftType === "agent_research" ? (
+          <>
+            <label className="block">
+              <FieldLabel>Research URL template</FieldLabel>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                Usually {"{{steps.<apollo_id>.website}}"} — falls back to research_url / linkedin_url on the lead.
+              </p>
+              <input
+                type="text"
+                className={fieldClassName}
+                value={draftData.url ?? ""}
+                onChange={(event) => applyDataPatch({ url: event.target.value })}
+                placeholder="{{steps.apollo-1.website}}"
+              />
+            </label>
+            <label className="block">
+              <FieldLabel>Agent ID (optional)</FieldLabel>
+              <input
+                type="text"
+                className={fieldClassName}
+                value={draftData.agentId ?? ""}
+                onChange={(event) => applyDataPatch({ agentId: event.target.value })}
+                placeholder="Roster UUID — omit for default condenser"
+              />
+            </label>
+            <label className="block">
+              <FieldLabel>Condense task</FieldLabel>
+              <textarea
+                className={`${fieldClassName} mt-2 min-h-[100px] resize-y`}
+                value={draftData.task ?? ""}
+                onChange={(event) => applyDataPatch({ task: event.target.value })}
+                placeholder="What to extract from the scrape for the writer…"
               />
             </label>
           </>

@@ -10,6 +10,14 @@ export type WorkflowNodeData = {
   subject?: string;
   body?: string;
   template_id?: string;
+  /** agent_research: URL template, e.g. {{steps.apollo-1.website}} */
+  url?: string;
+  /** agent_research: optional roster agent UUID */
+  agentId?: string;
+  /** agent_research: fallback role when agentId omitted */
+  agentRole?: string;
+  /** agent_research: extra condense instructions (CEO-defined) */
+  task?: string;
 };
 
 export function defaultLabelForType(type: WorkflowExecutorType): string {
@@ -18,6 +26,8 @@ export function defaultLabelForType(type: WorkflowExecutorType): string {
       return "[ TRIGGER ] - Manual / Test Run";
     case "apollo_search":
       return "[ APOLLO ] - Search & Enrich Lead";
+    case "agent_research":
+      return "[ RESEARCH ] - Company / URL Scrape";
     case "deepseek_llm":
       return "[ DEEPSEEK ] - Draft Copy";
     case "copy_reviewer":
@@ -43,6 +53,16 @@ export function dataForExecutorType(
         label,
         location: existing.location ?? "United Kingdom",
         title: existing.title ?? "Agency Director, Founder",
+      };
+    case "agent_research":
+      return {
+        label: existing.label?.trim() || "Company Research",
+        url: existing.url ?? "{{steps.apollo-1.website}}",
+        task:
+          existing.task ??
+          "Summarize what the company sells, who they serve, and one outreach hook. Use only scraped facts.",
+        ...(existing.agentId ? { agentId: existing.agentId } : {}),
+        ...(existing.agentRole ? { agentRole: existing.agentRole } : {}),
       };
     case "deepseek_llm":
       return {
