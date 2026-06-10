@@ -1403,30 +1403,138 @@ async function insertStepLog(
   input: {
     executionId: string;
     clientId: string;
-    eventType: "STEP_START" | "STEP_COMPLETE";
-    nodeId: string;
-    nodeType: string;
+    agentId?: string | null;
+    eventType: "STEP_START" | "STEP_COMPLETE" | "OUTBOUND_PIPELINE";
+    nodeId?: string;
+    nodeType?: string;
     result?: unknown;
+    payload?: Record<string, unknown>;
   },
 ) {
   try {
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = input.payload ?? {
       nodeId: input.nodeId,
       nodeType: input.nodeType,
     };
 
-    if (input.result !== undefined) {
+    if (input.result !== undefined && !input.payload) {
       payload.result = input.result;
     }
 
     await supabaseAdmin.from("agent_logs").insert({
       execution_id: input.executionId,
       client_id: input.clientId,
+      agent_id: input.agentId ?? null,
       event_type: input.eventType,
       payload,
     });
   } catch (error) {
     console.warn("[run-outbound] failed to insert step log:", error);
+  }
+}
+
+async function fetchWorkspaceCeoAgentId(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("agents")
+    .select("id")
+    .eq("client_id", clientId)
+    .eq("role", "CEO")
+    .eq("is_active", true)
+    .maybeSingle();
+
+  return typeof data?.id === "string" ? data.id : null;
+}
+
+async function notifyCeoOutboundPipeline(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  clientId: string,
+  executionId: string,
+  ceoAgentId: string | null,
+  input: {
+    pipelineSource: string;
+    testEmail?: string;
+    haltedAtApprovalGate: boolean;
+    context: ExecutionContext;
+    executionLog: Array<{ nodeId: string; type: string; status: string }>;
+    error?: string;
+  },
+) {
+  const apolloLead = Object.values(input.context).find(
+    (entry) =>
+      entry &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      typeof (entry as Record<string, unknown>).company === "string",
+  ) as Record<string, unknown> | undefined;
+
+  const researchEntry = Object.values(input.context).find(
+    (entry) =>
+      entry &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      ("brief" in (entry as Record<string, unknown>) || "skipped" in (entry as Record<string, unknown>)),
+  ) as Record<string, unknown> | undefined;
+
+  const company = typeof apolloLead?.company === "string" ? apolloLead.company : null;
+  const website =
+    typeof apolloLead?.website === "string"
+      ? apolloLead.website
+      : typeof researchEntry?.url === "string"
+        ? researchEntry.url
+        : null;
+  const researchSkipped = researchEntry?.skipped === true;
+  const briefSnippet =
+    typeof researchEntry?.brief === "string" ? researchEntry.brief.slice(0, 240) : "";
+
+  const summary = {
+    pipelineSource: input.pipelineSource,
+    leadEmail: input.testEmail ?? null,
+    company,
+    website,
+    researchSkipped,
+    researchBriefSnippet: briefSnippet || null,
+    haltedAtApprovalGate: input.haltedAtApprovalGate,
+    steps: input.executionLog.map((step) => `${step.type}:${step.status}`),
+    error: input.error ?? null,
+  };
+
+  await insertStepLog(supabaseAdmin, {
+    executionId,
+    clientId,
+    agentId: ceoAgentId,
+    eventType: "OUTBOUND_PIPELINE",
+    payload: summary,
+  });
+
+  if (!ceoAgentId) return;
+
+  const taskSummary = input.error
+    ? `Outbound pipeline failed (${input.pipelineSource})`
+    : `Outbound draft queued (${input.pipelineSource})${company ? ` — ${company}` : ""}`;
+
+  const strategy = input.error
+    ? input.error.slice(0, 500)
+    : [
+        input.haltedAtApprovalGate ? "Halted at Human Review Queue." : "Completed.",
+        researchSkipped ? "Research skipped (no URL or scrape failed)." : "Research completed.",
+        briefSnippet ? `Brief: ${briefSnippet}` : "",
+        "CEO oversight: review pending drafts in Outbound queue.",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+  try {
+    await supabaseAdmin.from("agent_memory").insert({
+      workspace_id: clientId,
+      task_summary: taskSummary,
+      outcome: input.error ? "FAILURE" : "SUCCESS",
+      learned_strategy: strategy.slice(0, 1000),
+    });
+  } catch (memoryError) {
+    console.warn("[run-outbound] failed to write CEO operational memory:", memoryError);
   }
 }
 
@@ -1635,6 +1743,13 @@ serve(async (req) => {
     const useLiveApollo = Boolean(keys.apollo_api_key?.trim());
 
     const executionId = crypto.randomUUID();
+    const pipelineSource =
+      typeof body.pipelineSource === "string" && body.pipelineSource.trim()
+        ? body.pipelineSource.trim()
+        : sendApproved
+          ? "send_approved"
+          : "workflow_run";
+    const ceoAgentId = await fetchWorkspaceCeoAgentId(supabaseAdmin, clientId);
     const context: ExecutionContext = {};
     const executiveOverrideRaw = body.executiveOverride as Record<string, unknown> | undefined;
     const executiveOverride =
@@ -1694,6 +1809,7 @@ serve(async (req) => {
       await insertStepLog(supabaseAdmin, {
         executionId,
         clientId,
+        agentId: ceoAgentId,
         eventType: "STEP_START",
         nodeId: node.id,
         nodeType,
@@ -2217,6 +2333,7 @@ serve(async (req) => {
         await insertStepLog(supabaseAdmin, {
           executionId,
           clientId,
+          agentId: ceoAgentId,
           eventType: "STEP_COMPLETE",
           nodeId: node.id,
           nodeType,
@@ -2236,14 +2353,31 @@ serve(async (req) => {
         await insertStepLog(supabaseAdmin, {
           executionId,
           clientId,
+          agentId: ceoAgentId,
           eventType: "STEP_COMPLETE",
           nodeId: node.id,
           nodeType,
           result: { error: message },
         });
+        await notifyCeoOutboundPipeline(supabaseAdmin, clientId, executionId, ceoAgentId, {
+          pipelineSource,
+          testEmail,
+          haltedAtApprovalGate,
+          context,
+          executionLog,
+          error: message,
+        });
         throw stepError;
       }
     }
+
+    await notifyCeoOutboundPipeline(supabaseAdmin, clientId, executionId, ceoAgentId, {
+      pipelineSource,
+      testEmail,
+      haltedAtApprovalGate,
+      context,
+      executionLog,
+    });
 
     return new Response(
       JSON.stringify({

@@ -215,6 +215,9 @@ When overriding copy_reviewer, your payload is treated as QA-approved and flows 
   const autonomyDirective = `
 --- AUTONOMY & DATA FETCHING (STRICT) ---
 ${CEO_AUTONOMY_RULES}
+
+--- OPERATOR PIPELINE OVERSIGHT ---
+Human CSV injects and queue regenerates run the saved workflow directly for speed, but every outbound pipeline execution is logged to agent_logs (event OUTBOUND_PIPELINE) and agent_memory under this workspace. You are always notified via operational memory. Proactively review pending drafts in the Human Review Queue when memory shows new bulk_csv_inject or operator_regenerate runs.
 `;
 
   await logInsert(executionId, clientId, ceoAgent.id, "SPAWN", {

@@ -186,7 +186,8 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
           Include the header row, then your lead rows. Optional columns:{" "}
           <code className="text-gray-700">website</code>,{" "}
           <code className="text-gray-700">research_url</code>,{" "}
-          <code className="text-gray-700">linkedin_url</code> (any link the research step can scrape).
+          <code className="text-gray-700">linkedin_url</code>. Each inject is logged to CEO
+          operational memory.
         </p>
         <textarea
           value={pasteText}

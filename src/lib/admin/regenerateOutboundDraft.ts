@@ -80,6 +80,7 @@ export async function regenerateOutboundDraft(
       priorDraftSubject: input.priorSubject?.trim() || undefined,
       priorDraftBody: input.priorBody?.trim() || undefined,
       regenerateDraft: true,
+      pipelineSource: "operator_regenerate",
     },
   });
 

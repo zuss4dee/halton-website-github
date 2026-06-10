@@ -87,6 +87,7 @@ export async function invokeOutboundForLead(
       testEmail: lead.email,
       nodes,
       edges,
+      pipelineSource: "bulk_csv_inject",
     },
   });
 
