@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { DeleteLeadDialog } from "@/components/admin/DeleteLeadDialog";
 import {
@@ -114,43 +115,60 @@ export function BulkLeadInjector({
   const handleProcessLeads = async () => {
     if (!workspaceClientId || parsedLeads.length === 0 || isProcessing) return;
 
+    const total = parsedLeads.length;
+
     setIsProcessing(true);
     setSummary(null);
-    setProgress({ current: 0, total: parsedLeads.length });
+    setParseError(null);
+    setProgress({ current: 0, total });
 
-    const graph = await fetchActiveWorkflowGraph(workspaceClientId);
-    if (!graph) {
-      setParseError("No active workflow found. Save and activate a SOP in the Workflow Builder first.");
-      setIsProcessing(false);
-      return;
-    }
-
-    const errors: ProcessSummary["errors"] = [];
-    let succeeded = 0;
-
-    for (let index = 0; index < parsedLeads.length; index++) {
-      const lead = parsedLeads[index];
-      setProgress({ current: index + 1, total: parsedLeads.length });
-
-      const result = await invokeOutboundForLead(workspaceClientId, lead, graph);
-      if (result.success) {
-        succeeded += 1;
-      } else {
-        errors.push({
-          email: lead.email,
-          message: result.error ?? "Unknown error",
-        });
+    try {
+      const graph = await fetchActiveWorkflowGraph(workspaceClientId);
+      if (!graph) {
+        setParseError("No active workflow found. Save and activate a SOP in the Workflow Builder first.");
+        return;
       }
-    }
 
-    setSummary({
-      total: parsedLeads.length,
-      succeeded,
-      failed: parsedLeads.length - succeeded,
-      errors,
-    });
-    setIsProcessing(false);
-    onProcessingComplete?.();
+      const errors: ProcessSummary["errors"] = [];
+      let succeeded = 0;
+
+      for (let index = 0; index < parsedLeads.length; index++) {
+        const lead = parsedLeads[index];
+        setProgress({ current: index + 1, total: parsedLeads.length });
+
+        const result = await invokeOutboundForLead(workspaceClientId, lead, graph);
+        if (result.success) {
+          succeeded += 1;
+          onProcessingComplete?.();
+        } else {
+          errors.push({
+            email: lead.email,
+            message: result.error ?? "Unknown error",
+          });
+        }
+      }
+
+      const nextSummary = {
+        total: parsedLeads.length,
+        succeeded,
+        failed: parsedLeads.length - succeeded,
+        errors,
+      };
+
+      setSummary(nextSummary);
+
+      if (nextSummary.failed === 0) {
+        toast.success(`Imported ${succeeded}/${total} leads into Pending Approval.`);
+      } else {
+        toast.error(`Imported ${succeeded}/${total} leads · ${nextSummary.failed} failed.`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Import failed.";
+      setParseError(message);
+      toast.error(message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleOpenClearDialog = async () => {
@@ -220,6 +238,99 @@ export function BulkLeadInjector({
           Clear pending queue
         </button>
       </div>
+
+      {isProcessing || summary ? (
+        <div
+          className={`mt-6 rounded-lg border px-4 py-4 ${
+            isProcessing
+              ? "border-amber-200 bg-amber-50"
+              : summary && summary.failed === 0
+                ? "border-emerald-200 bg-emerald-50"
+                : "border-red-200 bg-red-50"
+          }`}
+        >
+          {isProcessing ? (
+            <div className="flex items-start gap-3">
+              <Loader2
+                className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-amber-700"
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-amber-950">
+                  Importing {progress.current}/{progress.total} leads
+                  {fileName ? ` · ${fileName}` : ""}
+                </p>
+                <p className="mt-1 text-xs text-amber-900/80">
+                  Running research and draft generation for each row. Drafts appear in Pending
+                  Approval as they finish — you can scroll down and start reviewing while this
+                  runs.
+                </p>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-amber-200/80">
+                  <div
+                    className="h-full rounded-full bg-amber-600 transition-all duration-300"
+                    style={{
+                      width:
+                        progress.total > 0
+                          ? `${Math.round((progress.current / progress.total) * 100)}%`
+                          : "0%",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : summary ? (
+            <div className="flex items-start gap-3">
+              {summary.failed === 0 ? (
+                <CheckCircle2
+                  className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700"
+                  aria-hidden
+                />
+              ) : (
+                <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" aria-hidden />
+              )}
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`text-sm font-medium ${
+                    summary.failed === 0 ? "text-emerald-950" : "text-red-950"
+                  }`}
+                >
+                  {summary.failed === 0
+                    ? `Imported ${summary.succeeded}/${summary.total} leads into Pending Approval`
+                    : `Imported ${summary.succeeded}/${summary.total} leads · ${summary.failed} failed`}
+                </p>
+                <p
+                  className={`mt-1 text-xs ${
+                    summary.failed === 0 ? "text-emerald-900/80" : "text-red-900/80"
+                  }`}
+                >
+                  {summary.failed === 0
+                    ? "All drafts are ready for review in Pending Approval below."
+                    : "Successful rows are in Pending Approval. Fix failed rows and re-import if needed."}
+                </p>
+                {summary.errors.length > 0 ? (
+                  <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto text-xs text-red-800">
+                    {summary.errors.slice(0, 8).map((entry) => (
+                      <li key={entry.email}>
+                        {entry.email}: {entry.message}
+                      </li>
+                    ))}
+                    {summary.errors.length > 8 ? (
+                      <li>…and {summary.errors.length - 8} more</li>
+                    ) : null}
+                  </ul>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setSummary(null)}
+                  className="mt-3 text-xs font-medium text-gray-600 underline-offset-2 hover:underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <DeleteLeadDialog
         open={clearDialogOpen}
@@ -297,42 +408,27 @@ export function BulkLeadInjector({
         <p className="mt-3 text-sm text-red-600">{parseError}</p>
       ) : null}
 
-      {parsedLeads.length > 0 && !isProcessing ? (
+      {parsedLeads.length > 0 && !isProcessing && !summary ? (
         <button
           type="button"
           onClick={() => void handleProcessLeads()}
           disabled={!workspaceClientId}
           className="mt-4 w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
         >
-      {parsedLeads.length === 1 ? "Inject 1 Lead" : `Inject ${parsedLeads.length} Leads`}
+          {parsedLeads.length === 1 ? "Inject 1 Lead" : `Inject ${parsedLeads.length} Leads`}
         </button>
       ) : null}
 
-      {isProcessing ? (
-        <p className="mt-4 text-sm text-gray-600">
-          Processing {progress.current} / {progress.total} leads…
-        </p>
-      ) : null}
-
-      {summary ? (
-        <div className="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
-          <p className="font-medium text-gray-900">
-            Complete: {summary.succeeded}/{summary.total} succeeded
-            {summary.failed > 0 ? ` · ${summary.failed} failed` : ""}
-          </p>
-          {summary.errors.length > 0 ? (
-            <ul className="mt-2 max-h-24 space-y-1 overflow-y-auto text-red-600">
-              {summary.errors.slice(0, 5).map((entry) => (
-                <li key={entry.email}>
-                  {entry.email}: {entry.message}
-                </li>
-              ))}
-              {summary.errors.length > 5 ? (
-                <li>…and {summary.errors.length - 5} more</li>
-              ) : null}
-            </ul>
-          ) : null}
-        </div>
+      {parsedLeads.length > 0 && summary && !isProcessing ? (
+        <button
+          type="button"
+          onClick={() => void handleProcessLeads()}
+          disabled={!workspaceClientId}
+          className="mt-4 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40"
+        >
+          Re-run import for {parsedLeads.length} parsed lead
+          {parsedLeads.length === 1 ? "" : "s"}
+        </button>
       ) : null}
     </section>
   );
