@@ -27,40 +27,56 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
   const [summary, setSummary] = useState<ProcessSummary | null>(null);
 
   const workspaceClientId = clientId.trim();
+  const [pasteText, setPasteText] = useState("");
 
-  const ingestFile = useCallback((file: File) => {
+  const ingestCsvText = useCallback((text: string, sourceLabel: string) => {
     setParseError(null);
     setSummary(null);
 
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setParseError("Only .csv files are supported.");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = typeof reader.result === "string" ? reader.result : "";
-        const leads = parseBulkLeadCsv(text);
-        if (leads.length === 0) {
-          setParseError("No valid rows found. Ensure headers include email.");
-          setParsedLeads([]);
-          setFileName(null);
-          return;
-        }
-        setParsedLeads(leads);
-        setFileName(file.name);
-      } catch (error) {
-        setParseError(error instanceof Error ? error.message : "Failed to parse CSV.");
+    try {
+      const leads = parseBulkLeadCsv(text);
+      if (leads.length === 0) {
+        setParseError("No valid rows found. Include a header row and at least one email.");
         setParsedLeads([]);
         setFileName(null);
+        return;
       }
-    };
-    reader.onerror = () => {
-      setParseError("Could not read file.");
-    };
-    reader.readAsText(file);
+      setParsedLeads(leads);
+      setFileName(sourceLabel);
+    } catch (error) {
+      setParseError(error instanceof Error ? error.message : "Failed to parse CSV.");
+      setParsedLeads([]);
+      setFileName(null);
+    }
   }, []);
+
+  const ingestFile = useCallback(
+    (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        setParseError("Only .csv files are supported.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = typeof reader.result === "string" ? reader.result : "";
+        ingestCsvText(text, file.name);
+      };
+      reader.onerror = () => {
+        setParseError("Could not read file.");
+      };
+      reader.readAsText(file);
+    },
+    [ingestCsvText],
+  );
+
+  const handleParsePaste = () => {
+    if (!pasteText.trim()) {
+      setParseError("Paste CSV text first.");
+      return;
+    }
+    ingestCsvText(pasteText, "pasted.csv");
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -158,6 +174,30 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
           ) : null}
         </div>
       </label>
+
+      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
+        <p className="text-sm font-medium text-gray-700">Or paste CSV</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Include the header row, then your lead rows.
+        </p>
+        <textarea
+          value={pasteText}
+          onChange={(event) => setPasteText(event.target.value)}
+          disabled={isProcessing}
+          rows={5}
+          spellCheck={false}
+          placeholder={`first_name,last_name,email,company,title\nDamilare,Adeosun,adedamilare1@gmail.com,Echt AI,CEO`}
+          className="mt-3 w-full resize-y rounded-md border border-gray-200 px-3 py-2 font-mono text-xs text-gray-800 focus:border-gray-400 focus:outline-none disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={handleParsePaste}
+          disabled={isProcessing || !pasteText.trim()}
+          className="mt-3 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:opacity-40"
+        >
+          Parse pasted CSV
+        </button>
+      </div>
 
       {parseError ? (
         <p className="mt-3 text-sm text-red-600">{parseError}</p>

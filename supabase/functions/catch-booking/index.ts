@@ -1,6 +1,56 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { alertLeadsChannel } from "../_shared/alerting.ts";
+
+const COMPANY_KEY_PATTERN = /company|organization|organisation|business|employer|firm/i;
+
+function readResponseValue(entry: unknown): string | null {
+  if (!entry || typeof entry !== "object") return null;
+  const obj = entry as Record<string, unknown>;
+
+  const response = obj.response;
+  if (typeof response === "string" && response.trim()) return response.trim();
+  if (typeof response === "number" && Number.isFinite(response)) return String(response);
+  if (Array.isArray(response) && response.length > 0) {
+    const first = response[0];
+    if (typeof first === "string" && first.trim()) return first.trim();
+    if (typeof first === "object" && first !== null && "label" in first) {
+      const label = (first as { label?: unknown }).label;
+      if (typeof label === "string" && label.trim()) return label.trim();
+    }
+  }
+  if (typeof response === "object" && response !== null && "label" in response) {
+    const label = (response as { label?: unknown }).label;
+    if (typeof label === "string" && label.trim()) return label.trim();
+  }
+
+  const value = obj.value;
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (Array.isArray(value) && value.length > 0) {
+    const first = value[0];
+    if (typeof first === "string" && first.trim()) return first.trim();
+  }
+  if (typeof value === "object" && value !== null && "value" in value) {
+    const nested = (value as { value?: unknown }).value;
+    if (typeof nested === "string" && nested.trim()) return nested.trim();
+  }
+
+  return null;
+}
+
+function readFromFieldBag(bag: unknown, pattern: RegExp): string | null {
+  if (!bag || typeof bag !== "object") return null;
+
+  for (const [key, entry] of Object.entries(bag as Record<string, unknown>)) {
+    if (!pattern.test(key)) continue;
+    if (typeof entry === "string" && entry.trim()) return entry.trim();
+    const parsed = readResponseValue(entry);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
 
 function readAttendeeName(payload: Record<string, unknown>): string {
   const attendees = payload.attendees;
@@ -14,10 +64,8 @@ function readAttendeeName(payload: Record<string, unknown>): string {
   }
 
   const responses = payload.responses as Record<string, unknown> | undefined;
-  const nameResponse = responses?.name as { value?: unknown } | undefined;
-  if (typeof nameResponse?.value === "string" && nameResponse.value.trim()) {
-    return nameResponse.value.trim();
-  }
+  const nameResponse = readResponseValue(responses?.name);
+  if (nameResponse) return nameResponse;
 
   return "Unknown Lead";
 }
@@ -30,23 +78,66 @@ function readAttendeeEmail(payload: Record<string, unknown>): string {
   }
 
   const responses = payload.responses as Record<string, unknown> | undefined;
-  const emailResponse = responses?.email as { value?: unknown } | undefined;
-  if (typeof emailResponse?.value === "string" && emailResponse.value.trim()) {
-    return emailResponse.value.trim();
-  }
+  const emailResponse = readResponseValue(responses?.email);
+  if (emailResponse) return emailResponse;
 
   return "no-email@provided.com";
 }
 
-function readAttendeeCompany(payload: Record<string, unknown>): string {
+function readAttendeeCompany(payload: Record<string, unknown>): string | null {
   const responses = payload.responses as Record<string, unknown> | undefined;
-  const companyResponse =
-    (responses?.company as { value?: unknown } | undefined) ??
-    (responses?.Company as { value?: unknown } | undefined);
-  if (typeof companyResponse?.value === "string" && companyResponse.value.trim()) {
-    return companyResponse.value.trim();
+
+  if (responses) {
+    for (const key of ["company", "Company", "company_name", "organization", "organisation"]) {
+      const value = readResponseValue(responses[key]);
+      if (value) return value;
+    }
+
+    for (const [key, entry] of Object.entries(responses)) {
+      if (!COMPANY_KEY_PATTERN.test(key)) continue;
+      const value = readResponseValue(entry);
+      if (value) return value;
+    }
+
+    for (const entry of Object.values(responses)) {
+      if (!entry || typeof entry !== "object") continue;
+      const label = String((entry as { label?: unknown }).label ?? "");
+      if (!COMPANY_KEY_PATTERN.test(label)) continue;
+      const value = readResponseValue(entry);
+      if (value) return value;
+    }
   }
-  return "Unknown Company";
+
+  return (
+    readFromFieldBag(payload.customInputs, COMPANY_KEY_PATTERN) ??
+    readFromFieldBag(payload.userFieldsResponses, COMPANY_KEY_PATTERN)
+  );
+}
+
+async function lookupCompanyFromCrm(
+  supabase: SupabaseClient,
+  clientId: string,
+  email: string,
+): Promise<string | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || normalized === "no-email@provided.com") return null;
+
+  const { data, error } = await supabase
+    .from("leads")
+    .select("target_company")
+    .eq("client_id", clientId)
+    .ilike("email", normalized)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[catch-booking] CRM company lookup failed:", error.message);
+    return null;
+  }
+
+  const company = data?.target_company?.trim();
+  return company || null;
 }
 
 async function notifyBookingSlack(
@@ -86,6 +177,78 @@ async function notifyBookingSlack(
   };
 }
 
+type ClientRow = {
+  notion_api_key: string | null;
+  notion_database_id: string | null;
+  slack_webhook_url: string | null;
+  meetings_booked: number | null;
+};
+
+async function writeNotionLead(
+  client: ClientRow,
+  leadName: string,
+  leadCompany: string,
+  leadEmail: string,
+): Promise<string | null> {
+  if (!client.notion_api_key || !client.notion_database_id) {
+    console.warn("[catch-booking] Notion keys not configured — skipping CRM write");
+    return null;
+  }
+
+  const notionResponse = await fetch("https://api.notion.com/v1/pages", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${client.notion_api_key}`,
+      "Content-Type": "application/json",
+      "Notion-Version": "2022-06-28",
+    },
+    body: JSON.stringify({
+      parent: { database_id: client.notion_database_id },
+      properties: {
+        "Lead Name": { title: [{ text: { content: leadName } }] },
+        Company: { rich_text: [{ text: { content: leadCompany } }] },
+        Email: { email: leadEmail },
+        Status: { status: { name: "Incoming" } },
+      },
+    }),
+  });
+
+  const result = await notionResponse.json();
+
+  if (!notionResponse.ok) {
+    const message =
+      typeof result === "object" && result !== null && "message" in result
+        ? String((result as { message: string }).message)
+        : "Notion API request failed";
+    console.error("[catch-booking] Notion write failed:", message);
+    return null;
+  }
+
+  if (typeof result === "object" && result !== null && "url" in result) {
+    return String((result as { url: string }).url);
+  }
+
+  return null;
+}
+
+async function incrementMeetingsBooked(
+  supabase: SupabaseClient,
+  clientId: string,
+  priorMeetings: number,
+): Promise<number | null> {
+  const { error: meetingsError } = await supabase
+    .from("clients")
+    .update({ meetings_booked: priorMeetings + 1 })
+    .eq("id", clientId);
+
+  if (meetingsError) {
+    console.error("[catch-booking] meetings_booked increment failed:", meetingsError.message);
+    return null;
+  }
+
+  return priorMeetings + 1;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok");
 
@@ -112,7 +275,6 @@ serve(async (req) => {
 
     const leadName = readAttendeeName(payload);
     const leadEmail = readAttendeeEmail(payload);
-    const leadCompany = readAttendeeCompany(payload);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -120,84 +282,40 @@ serve(async (req) => {
 
     const { data: client, error: clientError } = await supabase
       .from("clients")
-      .select("notion_api_key, notion_database_id, slack_webhook_url")
-      .eq("id", clientId)
-      .single();
-
-    if (clientError || !client) {
-      throw new Error(clientError?.message ?? "Client not found");
-    }
-
-    let notionPageUrl: string | null = null;
-
-    if (client.notion_api_key && client.notion_database_id) {
-      const notionResponse = await fetch("https://api.notion.com/v1/pages", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${client.notion_api_key}`,
-          "Content-Type": "application/json",
-          "Notion-Version": "2022-06-28",
-        },
-        body: JSON.stringify({
-          parent: { database_id: client.notion_database_id },
-          properties: {
-            "Lead Name": { title: [{ text: { content: leadName } }] },
-            Company: { rich_text: [{ text: { content: leadCompany } }] },
-            Email: { email: leadEmail },
-            Status: { status: { name: "Incoming" } },
-          },
-        }),
-      });
-
-      const result = await notionResponse.json();
-
-      if (!notionResponse.ok) {
-        const message =
-          typeof result === "object" && result !== null && "message" in result
-            ? String((result as { message: string }).message)
-            : "Notion API request failed";
-        console.error("[catch-booking] Notion write failed:", message);
-      } else if (typeof result === "object" && result !== null && "url" in result) {
-        notionPageUrl = String((result as { url: string }).url);
-      }
-    } else {
-      console.warn("[catch-booking] Notion keys not configured — skipping CRM write");
-    }
-
-    let meetingsBooked: number | null = null;
-
-    const { data: priorRow, error: priorMeetingsError } = await supabase
-      .from("clients")
-      .select("meetings_booked")
+      .select("notion_api_key, notion_database_id, slack_webhook_url, meetings_booked")
       .eq("id", clientId)
       .maybeSingle();
 
-    if (priorMeetingsError) {
-      console.warn(
-        "[catch-booking] meetings_booked read skipped:",
-        priorMeetingsError.message,
-      );
-    } else {
-      const priorMeetings =
-        typeof priorRow?.meetings_booked === "number" &&
-          Number.isFinite(priorRow.meetings_booked)
-          ? priorRow.meetings_booked
-          : 0;
-
-      const { error: meetingsError } = await supabase
-        .from("clients")
-        .update({ meetings_booked: priorMeetings + 1 })
-        .eq("id", clientId);
-
-      if (meetingsError) {
-        console.error("[catch-booking] meetings_booked increment failed:", meetingsError.message);
-      } else {
-        meetingsBooked = priorMeetings + 1;
-      }
+    if (clientError) {
+      throw new Error(clientError.message);
     }
 
-    const crmLine = notionPageUrl
-      ? `*CRM Link:* <${notionPageUrl}|View Dossier in Notion>`
+    if (!client) {
+      console.warn(
+        "[catch-booking] Ignoring booking — unknown clientId (remove stale Cal.com webhook):",
+        clientId,
+      );
+      return new Response(
+        JSON.stringify({
+          ignored: true,
+          reason: "unknown_client",
+          clientId,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const leadCompanyFromCal = readAttendeeCompany(payload);
+    const leadCompanyFromCrm =
+      leadCompanyFromCal ??
+      (await lookupCompanyFromCrm(supabase, clientId, leadEmail));
+    const leadCompany = leadCompanyFromCrm ?? "Unknown Company";
+
+    const crmLine = client.notion_api_key && client.notion_database_id
+      ? "*CRM:* Notion sync running in background"
       : "*CRM:* Notion not configured for this workspace";
 
     const slackMessage = `Discovery call booked\nLead: ${leadName}\nCompany: ${leadCompany}\nEmail: ${leadEmail}`;
@@ -228,14 +346,47 @@ serve(async (req) => {
       console.warn("[catch-booking] Slack notification failed:", slackResult.error);
     }
 
+    const priorMeetings =
+      typeof client.meetings_booked === "number" && Number.isFinite(client.meetings_booked)
+        ? client.meetings_booked
+        : 0;
+
+    const backgroundWork = (async () => {
+      const notionPageUrl = await writeNotionLead(client, leadName, leadCompany, leadEmail);
+      const meetingsBooked = await incrementMeetingsBooked(supabase, clientId, priorMeetings);
+
+      console.log("[catch-booking] background complete", {
+        clientId,
+        notionPageUrl,
+        meetingsBooked,
+        companySource: leadCompanyFromCal
+          ? "cal.com"
+          : leadCompanyFromCrm
+            ? "crm"
+            : "unknown",
+      });
+    })();
+
+    // @ts-ignore Supabase edge runtime extension
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+      // @ts-ignore Supabase edge runtime extension
+      EdgeRuntime.waitUntil(backgroundWork);
+    } else {
+      await backgroundWork;
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        url: notionPageUrl,
-        meetingsBooked,
         slackNotified: slackResult.ok,
         slackSource: slackResult.source,
         slackError: slackResult.error ?? null,
+        company: leadCompany,
+        companySource: leadCompanyFromCal
+          ? "cal.com"
+          : leadCompanyFromCrm
+            ? "crm"
+            : "unknown",
       }),
       {
         headers: { "Content-Type": "application/json" },

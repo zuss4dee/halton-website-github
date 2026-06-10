@@ -14,6 +14,7 @@ import {
 } from "../_shared/leadMergeVariables.ts";
 import { appendOutboundFounderSignature } from "../_shared/outboundSignature.ts";
 import { resolveOutboundFromEmail } from "../_shared/resolveOutboundFrom.ts";
+import { resolveInboundReplyToAddress } from "../_shared/inboundReplyTo.ts";
 import {
   buildExecutiveOverrideNodeOutput,
   shouldReusePriorContext,
@@ -1127,7 +1128,8 @@ async function runResend(
     ? personalizeOutboundEmailContent(subject, textBody, meta.mergeFields)
     : { subject, body: textBody };
   const signedBody = appendOutboundFounderSignature(personalized.body);
-  const requestBody = {
+  const replyTo = resolveInboundReplyToAddress();
+  const requestBody: Record<string, unknown> = {
     from,
     to,
     subject: personalized.subject,
@@ -1138,6 +1140,9 @@ async function runResend(
       "X-Resend-Click-Tracking": "false",
     },
   };
+  if (replyTo) {
+    requestBody.reply_to = replyTo;
+  }
 
   let resendResponse: Response;
   try {
@@ -1250,6 +1255,12 @@ serve(async (req) => {
     const testEmail = (body.testEmail ?? body.email) as string | undefined;
     let nodes = body.nodes as FlowNode[] | undefined;
     let edges = body.edges as FlowEdge[] | undefined;
+    const operatorFeedback =
+      typeof body.operatorFeedback === "string" ? body.operatorFeedback.trim() : "";
+    const priorDraftSubject =
+      typeof body.priorDraftSubject === "string" ? body.priorDraftSubject.trim() : "";
+    const priorDraftBody =
+      typeof body.priorDraftBody === "string" ? body.priorDraftBody.trim() : "";
 
     if (!clientId) throw new Error("Missing clientId in request body");
     if (!sendApproved && !testEmail) {
@@ -1355,20 +1366,44 @@ serve(async (req) => {
         textBody,
         { mergeFields },
       );
-      const personalizedBody = personalizeOutboundEmailContent(
+      const personalizedEmail = personalizeOutboundEmailContent(
         originalSubject,
         textBody,
         mergeFields,
-      ).body;
+      );
 
       if (leadId) {
+        const { data: leadRowForArchive, error: leadArchiveFetchError } = await supabaseAdmin
+          .from("leads")
+          .select("form_data")
+          .eq("id", leadId)
+          .eq("client_id", clientId)
+          .maybeSingle();
+
+        if (leadArchiveFetchError) {
+          throw new Error(
+            `send_approved: Failed to load lead archive fields: ${leadArchiveFetchError.message}`,
+          );
+        }
+
+        const archivedFormData =
+          leadRowForArchive?.form_data &&
+          typeof leadRowForArchive.form_data === "object" &&
+          !Array.isArray(leadRowForArchive.form_data)
+            ? (leadRowForArchive.form_data as Record<string, unknown>)
+            : {};
+
         const { error: leadUpdateError } = await supabaseAdmin
           .from("leads")
           .update({
             queue_status: "sent",
             campaign_status: "SENT",
-            generated_copy: appendOutboundFounderSignature(personalizedBody),
+            generated_copy: appendOutboundFounderSignature(personalizedEmail.body),
             sent_at: new Date().toISOString(),
+            form_data: {
+              ...archivedFormData,
+              draft_subject: personalizedEmail.subject,
+            },
           })
           .eq("id", leadId)
           .eq("client_id", clientId);
@@ -1618,7 +1653,20 @@ serve(async (req) => {
                 n.type === "apollo_search"
               )?.id ?? "apollo-1");
 
-            const prompt = interpolate(rawPrompt, context);
+            let prompt = interpolate(rawPrompt, context);
+            if (operatorFeedback) {
+              prompt += `\n\n---\nOPERATOR REJECTION (must fix in this new draft):\n${operatorFeedback}`;
+              if (priorDraftBody) {
+                prompt +=
+                  `\n\nPrevious rejected body (do not repeat — write a fresh version):\n${priorDraftBody.slice(0, 2000)}`;
+              }
+              if (priorDraftSubject) {
+                prompt += `\n\nPrevious rejected subject: ${priorDraftSubject.slice(0, 200)}`;
+              }
+              prompt +=
+                "\n\nWrite a new email body only. Address the operator rejection directly. Keep it under 3 sentences before the Damilare sign-off.";
+            }
+
             const writerResult = await runDeepseekWithAgent(
               keys,
               supabaseAdmin,
@@ -1730,6 +1778,44 @@ serve(async (req) => {
               }
             }
 
+            const { data: existingQueueLead } = await supabaseAdmin
+              .from("leads")
+              .select("form_data")
+              .eq("email", leadEmail)
+              .eq("client_id", clientId)
+              .maybeSingle();
+
+            const priorFormData =
+              existingQueueLead?.form_data &&
+              typeof existingQueueLead.form_data === "object" &&
+              !Array.isArray(existingQueueLead.form_data)
+                ? (existingQueueLead.form_data as Record<string, unknown>)
+                : {};
+
+            const rejectionHistory = Array.isArray(priorFormData.draft_rejection_history)
+              ? priorFormData.draft_rejection_history.filter(
+                (entry): entry is Record<string, unknown> =>
+                  typeof entry === "object" && entry !== null,
+              )
+              : [];
+
+            const nextFormData: Record<string, unknown> = {
+              ...priorFormData,
+              draft_subject: subject,
+            };
+
+            if (operatorFeedback) {
+              nextFormData.draft_rejection_history = [
+                ...rejectionHistory,
+                {
+                  reason: operatorFeedback,
+                  rejected_at: new Date().toISOString(),
+                  prior_subject: priorDraftSubject || subject,
+                  prior_body: priorDraftBody || bodyText,
+                },
+              ].slice(-10);
+            }
+
             const { error: queueError } = await supabaseAdmin.from("leads").upsert(
               {
                 client_id: clientId,
@@ -1740,6 +1826,7 @@ serve(async (req) => {
                 generated_copy: bodyText,
                 campaign_status: "PENDING_REVIEW",
                 queue_status: queueStatus,
+                form_data: nextFormData,
               },
               { onConflict: "email,client_id" },
             );

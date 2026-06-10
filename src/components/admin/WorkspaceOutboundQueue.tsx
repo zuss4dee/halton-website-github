@@ -9,6 +9,23 @@ import {
 } from "@/lib/admin/leadsRepository";
 import { AddLeadTrigger } from "@/components/admin/AddLeadSheet";
 import {
+  loadDraftFromLead,
+  OutboundDraftEditor,
+} from "@/components/admin/OutboundDraftEditor";
+import {
+  mergeLeadFormDataWithDraftSubject,
+  resolveDraftRejectionHistory,
+} from "@/lib/outbound/outboundDraft";
+import { regenerateOutboundDraft } from "@/lib/admin/regenerateOutboundDraft";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   fetchActiveSequenceLeads,
   fetchPendingApprovalLeads,
   fetchSentLeads,
@@ -101,9 +118,13 @@ export function WorkspaceOutboundQueue({
   const [activeTab, setActiveTab] = useState<QueueTab>("pending");
   const [queue, setQueue] = useState<LeadRow[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
-  const [editedCopy, setEditedCopy] = useState("");
+  const [editedSubject, setEditedSubject] = useState("");
+  const [editedBody, setEditedBody] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [listPage, setListPage] = useState(1);
 
@@ -176,7 +197,8 @@ export function WorkspaceOutboundQueue({
 
   useEffect(() => {
     setSelectedLead(null);
-    setEditedCopy("");
+    setEditedSubject("");
+    setEditedBody("");
     setListPage(1);
   }, [activeTab]);
 
@@ -191,8 +213,16 @@ export function WorkspaceOutboundQueue({
   }, [refreshKey]);
 
   useEffect(() => {
-    setEditedCopy(selectedLead?.generated_copy ?? "");
-  }, [selectedLead]);
+    if (!selectedLead) {
+      setEditedSubject("");
+      setEditedBody("");
+      return;
+    }
+
+    const draft = loadDraftFromLead(selectedLead, isSentTab);
+    setEditedSubject(draft.subject);
+    setEditedBody(draft.body);
+  }, [selectedLead, isSentTab]);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -215,18 +245,30 @@ export function WorkspaceOutboundQueue({
       return;
     }
 
-    if (!editedCopy.trim()) {
+    if (!editedBody.trim()) {
       setStatusMessage("> ERROR: DRAFT BODY IS EMPTY");
+      return;
+    }
+
+    const trimmedSubject = editedSubject.trim();
+    if (!trimmedSubject) {
+      setStatusMessage("> ERROR: SUBJECT LINE IS EMPTY");
       return;
     }
 
     setIsSubmitting(true);
 
+    const nextFormData = mergeLeadFormDataWithDraftSubject(
+      selectedLead.form_data,
+      trimmedSubject,
+    );
+
     const { error: approveError } = await supabase
       .from("leads")
       .update({
         queue_status: LEAD_QUEUE_STATUS.APPROVED,
-        generated_copy: editedCopy,
+        generated_copy: editedBody.trim(),
+        form_data: nextFormData,
       })
       .eq("id", selectedLead.id)
       .eq("client_id", workspaceClientId);
@@ -242,8 +284,8 @@ export function WorkspaceOutboundQueue({
       clientId: workspaceClientId,
       leadId: selectedLead.id,
       email: recipientEmail,
-      body: editedCopy,
-      subject: "Quick question for {{company_name}}",
+      body: editedBody.trim(),
+      subject: trimmedSubject,
     });
 
     if (!sendResult.success) {
@@ -254,7 +296,8 @@ export function WorkspaceOutboundQueue({
     }
 
     setSelectedLead(null);
-    setEditedCopy("");
+    setEditedSubject("");
+    setEditedBody("");
     setStatusMessage("> SYSTEM: SENT VIA RESEND — RECORD ARCHIVED TO OUTBOX");
     await fetchQueue();
     syncAttention();
@@ -290,11 +333,72 @@ export function WorkspaceOutboundQueue({
     }
 
     setSelectedLead(null);
-    setEditedCopy("");
+    setEditedSubject("");
+    setEditedBody("");
     await fetchQueue();
     syncAttention();
     setIsSubmitting(false);
   };
+
+  const handleRejectAndRegenerate = async () => {
+    if (
+      !selectedLead?.id ||
+      isSubmitting ||
+      isRegenerating ||
+      isSentTab ||
+      isActiveTab ||
+      !workspaceClientId
+    ) {
+      return;
+    }
+
+    const reason = rejectReason.trim();
+    if (!reason) {
+      setStatusMessage("> ERROR: ADD A REJECTION REASON FOR THE WRITER");
+      return;
+    }
+
+    setIsRegenerating(true);
+
+    const result = await regenerateOutboundDraft({
+      clientId: workspaceClientId,
+      lead: selectedLead,
+      reason,
+      priorSubject: editedSubject,
+      priorBody: editedBody,
+    });
+
+    if (!result.success) {
+      console.error("REGENERATE DRAFT ERROR:", result.error);
+      setStatusMessage(`> REGENERATE FAILED: ${result.error ?? "unknown"}`);
+      setIsRegenerating(false);
+      return;
+    }
+
+    const leadId = selectedLead.id;
+    await fetchQueue();
+
+    const { data: refreshedLead, error: refreshError } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("id", leadId)
+      .eq("client_id", workspaceClientId)
+      .maybeSingle();
+
+    if (refreshError) {
+      console.error("REGENERATE REFRESH ERROR:", refreshError);
+    } else if (refreshedLead) {
+      setSelectedLead(refreshedLead as LeadRow);
+    }
+
+    setRejectDialogOpen(false);
+    setRejectReason("");
+    setStatusMessage("> SYSTEM: NEW DRAFT GENERATED — REVIEW AND APPROVE");
+    syncAttention();
+    setIsRegenerating(false);
+  };
+
+  const rejectionHistory = selectedLead ? resolveDraftRejectionHistory(selectedLead) : [];
 
   const listHeading = isActiveTab
     ? "Active sequence"
@@ -497,13 +601,31 @@ export function WorkspaceOutboundQueue({
               </div>
 
               <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-                <textarea
-                  value={editedCopy}
-                  onChange={(e) => setEditedCopy(e.target.value)}
+                {rejectionHistory.length > 0 && !isSentTab ? (
+                  <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+                    <p className="font-medium">Previous rejection feedback</p>
+                    <ul className="mt-2 space-y-2 text-xs text-amber-900/90">
+                      {rejectionHistory.map((entry) => (
+                        <li key={`${entry.rejected_at}-${entry.reason}`}>
+                          <span className="font-medium">{entry.reason}</span>
+                          {entry.rejected_at ? (
+                            <span className="text-amber-800/70">
+                              {" "}
+                              · {formatSentLabel(entry.rejected_at)}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <OutboundDraftEditor
+                  lead={selectedLead}
                   readOnly={isSentTab}
-                  className={`h-96 w-full resize-y rounded-md border-0 bg-transparent p-0 text-sm leading-relaxed text-gray-800 focus:outline-none focus:ring-0 ${
-                    isSentTab ? "cursor-default text-gray-600" : ""
-                  }`}
+                  subject={editedSubject}
+                  body={editedBody}
+                  onSubjectChange={setEditedSubject}
+                  onBodyChange={setEditedBody}
                 />
               </div>
 
@@ -517,15 +639,23 @@ export function WorkspaceOutboundQueue({
                   <button
                     type="button"
                     onClick={() => void handleDiscard()}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isRegenerating}
                     className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:opacity-40"
                   >
                     Discard draft
                   </button>
                   <button
                     type="button"
+                    onClick={() => setRejectDialogOpen(true)}
+                    disabled={isSubmitting || isRegenerating}
+                    className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-900 transition-colors hover:border-amber-300 hover:bg-amber-100 disabled:opacity-40"
+                  >
+                    {isRegenerating ? "Regenerating…" : "Reject & regenerate"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void handleApprove()}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isRegenerating}
                     className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
                   >
                     Approve and send
@@ -536,6 +666,43 @@ export function WorkspaceOutboundQueue({
           )}
         </div>
       </div>
+
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Reject & regenerate</DialogTitle>
+            <DialogDescription>
+              Tell the writer what to fix. A fresh draft will run through QA and land back in
+              Pending.
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={rejectReason}
+            onChange={(event) => setRejectReason(event.target.value)}
+            rows={4}
+            placeholder="e.g. Too generic — mention their SaaS vertical and drop the dash punctuation."
+            className="w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+          />
+          <DialogFooter className="gap-2 sm:gap-0">
+            <button
+              type="button"
+              onClick={() => setRejectDialogOpen(false)}
+              disabled={isRegenerating}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRejectAndRegenerate()}
+              disabled={isRegenerating || !rejectReason.trim()}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+            >
+              {isRegenerating ? "Regenerating…" : "Regenerate draft"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

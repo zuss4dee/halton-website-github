@@ -1,14 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { alertLeadsChannel } from "../_shared/alerting.ts";
+import { resolveInboundReplyToAddress } from "../_shared/inboundReplyTo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const HOT_LEAD_KEYWORDS = ["book", "meeting", "calendar", "call", "time"] as const;
-const REPLY_SNIPPET_MAX_LENGTH = 200;
+import { classifyReplyIntent } from "../_shared/replyIntent.ts";
 
 /** Must match Notion column names exactly — including spaces/casing. */
 const NOTION_COLUMNS = {
@@ -20,6 +20,7 @@ const NOTION_COLUMNS = {
 
 /** Production: full DB lookup, sequence kill switch, Slack alerts. */
 const TEMPORARY_BYPASS = false;
+const REPLY_SNIPPET_MAX_LENGTH = 200;
 
 type LeadMatch = {
   id: string;
@@ -52,11 +53,6 @@ function extractEmailAddress(raw: string): string {
   const bracketMatch = trimmed.match(/<([^>]+)>/);
   const email = (bracketMatch?.[1] ?? trimmed).trim().toLowerCase();
   return email;
-}
-
-function containsHotLeadKeyword(replyText: string): boolean {
-  const normalized = replyText.toLowerCase();
-  return HOT_LEAD_KEYWORDS.some((keyword) => normalized.includes(keyword));
 }
 
 function truncateText(text: string, maxLength: number): string {
@@ -99,18 +95,50 @@ function buildHotLeadSlackMessage(input: {
 }
 
 async function notifySlackHotLead(input: {
+  clientWebhook: string | null | undefined;
   prospectLabel: string;
   replySnippet: string;
   outboundUrl: string | null;
-}): Promise<boolean> {
-  const result = await alertLeadsChannel(buildHotLeadSlackMessage(input));
+}): Promise<{ ok: boolean; source: string }> {
+  const message = buildHotLeadSlackMessage({
+    prospectLabel: input.prospectLabel,
+    replySnippet: input.replySnippet,
+    outboundUrl: input.outboundUrl,
+  });
 
-  if (!result.ok) {
-    console.warn("[inbound-webhook] Slack leads alert skipped:", result.error);
-    return false;
+  const blocks = [
+    {
+      type: "header",
+      text: { type: "plain_text", text: "Hot Lead Reply", emoji: true },
+    },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: message },
+    },
+  ];
+
+  if (input.clientWebhook?.trim()) {
+    const slackResponse = await fetch(input.clientWebhook.trim(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blocks, text: "Hot Lead Reply" }),
+    });
+
+    if (slackResponse.ok) {
+      return { ok: true, source: "client_webhook" };
+    }
+
+    const slackBody = await slackResponse.text();
+    console.error("[inbound-webhook] client Slack webhook failed:", slackResponse.status, slackBody);
   }
 
-  return true;
+  const platform = await alertLeadsChannel(message);
+  if (platform.ok) {
+    return { ok: true, source: "platform_env" };
+  }
+
+  console.warn("[inbound-webhook] Slack leads alert skipped:", platform.error);
+  return { ok: false, source: "none" };
 }
 
 async function logNotionSchemaForDebug(
@@ -322,6 +350,10 @@ serve(async (req) => {
     let lead: LeadMatch | null = null;
     let isHotLead = false;
     let replyText = "";
+    let clientWebhook: string | null = null;
+    let replyIntentSource = "none";
+    let replyIntentLabel = "unknown";
+    let replyIntentReason = "";
 
     if (TEMPORARY_BYPASS) {
       // TEMPORARY BYPASS: Force the webhook to trigger regardless of lead status
@@ -363,16 +395,19 @@ serve(async (req) => {
       lead = fetchedLead as LeadMatch;
 
       let resendApiKey = platformResendKey;
+      let deepseekApiKey: string | null = null;
       if (lead.client_id) {
         const { data: client } = await supabaseAdmin
           .from("clients")
-          .select("resend_api_key")
+          .select("resend_api_key, slack_webhook_url, deepseek_api_key")
           .eq("id", lead.client_id)
           .maybeSingle();
 
         if (client?.resend_api_key) {
           resendApiKey = client.resend_api_key;
         }
+        clientWebhook = client?.slack_webhook_url ?? null;
+        deepseekApiKey = client?.deepseek_api_key ?? null;
       }
 
       replyText = await resolveReplyText(payload, resendApiKey);
@@ -386,7 +421,11 @@ serve(async (req) => {
         }, 422);
       }
 
-      isHotLead = containsHotLeadKeyword(replyText);
+      const intent = await classifyReplyIntent(replyText, deepseekApiKey);
+      isHotLead = intent.isHotLead;
+      replyIntentSource = intent.source;
+      replyIntentLabel = intent.intent;
+      replyIntentReason = intent.reason;
     }
 
     const now = new Date().toISOString();
@@ -409,6 +448,9 @@ serve(async (req) => {
         ...priorFormData,
         inbound_reply: replyText || null,
         inbound_received_at: now,
+        inbound_intent: replyIntentLabel,
+        inbound_intent_source: replyIntentSource,
+        inbound_intent_reason: replyIntentReason || null,
       };
 
       const { error: leadUpdateError } = await supabaseAdmin
@@ -444,6 +486,7 @@ serve(async (req) => {
     }
 
     let slackNotified = false;
+    let slackSource = "none";
     let notionPageUrl: string | null = null;
 
     if (isHotLead) {
@@ -451,11 +494,14 @@ serve(async (req) => {
       const replySnippet = truncateText(replyText, REPLY_SNIPPET_MAX_LENGTH);
       const outboundUrl = buildOutboundQueueUrl(lead!.client_id);
 
-      slackNotified = await notifySlackHotLead({
+      const slackResult = await notifySlackHotLead({
+        clientWebhook,
         prospectLabel,
         replySnippet,
         outboundUrl,
       });
+      slackNotified = slackResult.ok;
+      slackSource = slackResult.source;
 
       notionPageUrl = await createNotionHotLeadEntry({
         prospectEmail: fromEmail,
@@ -467,7 +513,10 @@ serve(async (req) => {
       leadId: lead!.id,
       from: fromEmail,
       isHotLead,
+      replyIntent: replyIntentLabel,
+      replyIntentSource,
       slackNotified,
+      slackSource,
       notionPageUrl,
       temporaryBypass: TEMPORARY_BYPASS,
     });
@@ -478,8 +527,11 @@ serve(async (req) => {
       leadId: lead!.id,
       replyId: replyRow?.id ?? null,
       is_hot_lead: isHotLead,
+      reply_intent: replyIntentLabel,
+      reply_intent_source: replyIntentSource,
       last_activity: now,
       slack_notified: slackNotified,
+      slack_source: slackSource,
       notion_page_url: notionPageUrl,
       temporary_bypass: TEMPORARY_BYPASS,
     });

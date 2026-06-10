@@ -131,15 +131,43 @@ function buildSlackHotLeadMessage(input: {
 }
 
 async function notifySlackHotLead(input: {
+  clientWebhook: string | null | undefined;
   prospectEmail: string;
   subject: string;
   replyText: string;
-}): Promise<void> {
-  const result = await alertLeadsChannel(buildSlackHotLeadMessage(input));
+}): Promise<{ ok: boolean; source: string }> {
+  const message = buildSlackHotLeadMessage({
+    prospectEmail: input.prospectEmail,
+    subject: input.subject,
+    replyText: input.replyText,
+  });
+
+  if (input.clientWebhook?.trim()) {
+    const slackResponse = await fetch(input.clientWebhook.trim(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message }),
+    });
+
+    if (slackResponse.ok) {
+      return { ok: true, source: "client_webhook" };
+    }
+
+    console.error(
+      "[api/inbound/resend] client Slack webhook failed:",
+      slackResponse.status,
+      await slackResponse.text(),
+    );
+  }
+
+  const result = await alertLeadsChannel(message);
 
   if (!result.ok) {
     console.warn("[api/inbound/resend] Slack leads alert skipped:", result.error);
+    return { ok: false, source: "none" };
   }
+
+  return { ok: true, source: "platform_env" };
 }
 
 export async function handleResendInbound(
@@ -180,6 +208,11 @@ export async function handleResendInbound(
   }
 
   const replyText = await resolveReplyText(payload);
+  const isHotLead =
+    replyText.length > 0 &&
+    ["book", "meeting", "calendar", "call", "time"].some((keyword) =>
+      replyText.toLowerCase().includes(keyword),
+    );
 
   const { data: existingLead } = await supabase
     .from("leads")
@@ -206,7 +239,7 @@ export async function handleResendInbound(
       status: "replied",
       queue_status: LEAD_QUEUE_STATUS.COMPLETED,
       next_send_date: null,
-      is_hot_lead: true,
+      is_hot_lead: isHotLead,
       last_activity: now,
       form_data,
     })
@@ -237,11 +270,24 @@ export async function handleResendInbound(
     }
   }
 
-  await notifySlackHotLead({
-    prospectEmail: lead.email ?? fromEmail,
-    subject,
-    replyText,
-  });
+  let clientWebhook: string | null = null;
+  if (lead.client_id) {
+    const { data: clientRow } = await supabase
+      .from("clients")
+      .select("slack_webhook_url")
+      .eq("id", lead.client_id)
+      .maybeSingle();
+    clientWebhook = clientRow?.slack_webhook_url ?? null;
+  }
+
+  if (isHotLead) {
+    await notifySlackHotLead({
+      clientWebhook,
+      prospectEmail: lead.email ?? fromEmail,
+      subject,
+      replyText,
+    });
+  }
 
   return {
     received: true,
