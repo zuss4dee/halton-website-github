@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   readInboundReplyFromLead,
   readInboundSubjectFromLead,
@@ -6,11 +7,13 @@ import {
 import type { LeadRow } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
+export type PipelineAction = "closed_won" | "follow_up";
+
 type HighIntentLeadDrawerProps = {
   lead: LeadRow | null;
   clientId: string;
   onClose: () => void;
-  onLeadUpdated: () => void;
+  onLeadUpdated: (action: PipelineAction, label: string) => void;
 };
 
 function formatDrawerDate(value: string | null | undefined): string {
@@ -125,7 +128,13 @@ export function HighIntentLeadDrawer({
     },
   ];
 
-  const updateLeadStatus = async (status: "closed_won" | "follow_up") => {
+  const leadLabel =
+    lead.prospect_name?.trim() ||
+    lead.target_company?.trim() ||
+    lead.email?.trim() ||
+    "Lead";
+
+  const updateLeadStatus = async (status: PipelineAction) => {
     if (!lead.id || isUpdating) return;
 
     setIsUpdating(true);
@@ -137,12 +146,24 @@ export function HighIntentLeadDrawer({
 
     if (error) {
       console.error("HIGH_INTENT status update:", error);
+      toast.error(`Could not update ${leadLabel}. Try again or check admin access.`);
       setIsUpdating(false);
       return;
     }
 
+    if (status === "follow_up") {
+      toast.success(`${leadLabel} marked for follow-up`, {
+        description:
+          "Removed from Replied list. Status saved in Halton — follow up in Gmail for now.",
+      });
+    } else {
+      toast.success(`${leadLabel} marked closed won`, {
+        description: "Removed from Replied list. Deal recorded in Halton.",
+      });
+    }
+
     setIsUpdating(false);
-    onLeadUpdated();
+    onLeadUpdated(status, leadLabel);
     onClose();
   };
 

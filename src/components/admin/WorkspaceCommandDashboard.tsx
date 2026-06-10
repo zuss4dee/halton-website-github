@@ -5,7 +5,10 @@ import {
   AdminPageHeader,
   formatAdminDate,
 } from "@/components/admin/AdminBrutalist";
-import { HighIntentLeadDrawer } from "@/components/admin/HighIntentLeadDrawer";
+import {
+  HighIntentLeadDrawer,
+  type PipelineAction,
+} from "@/components/admin/HighIntentLeadDrawer";
 import { ViewOrgChartButton } from "@/components/workspace/ViewOrgChartButton";
 import {
   readInboundReplyFromLead,
@@ -68,6 +71,13 @@ export function WorkspaceCommandDashboard({
   const [replyPreviewByLeadId, setReplyPreviewByLeadId] = useState<Record<string, string>>({});
   const [isLeadsLoading, setIsLeadsLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = window.setTimeout(() => setStatusMessage(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [statusMessage]);
 
   const resolveReplyPreview = (lead: LeadRow): string => {
     const fromLead = readInboundReplyFromLead(lead);
@@ -180,7 +190,14 @@ export function WorkspaceCommandDashboard({
     void fetchHighIntentLeads();
   }, [fetchHighIntentLeads]);
 
-  const handleLeadUpdated = () => {
+  const handleLeadUpdated = (action: PipelineAction, label: string) => {
+    if (action === "follow_up") {
+      setStatusMessage(
+        `${label} moved to Follow-Up — removed from this list. Status saved in Halton; continue the thread in Gmail.`,
+      );
+    } else {
+      setStatusMessage(`${label} marked Closed Won — removed from the replied queue.`);
+    }
     void fetchHighIntentLeads();
     void fetchMetrics();
   };
@@ -230,6 +247,12 @@ export function WorkspaceCommandDashboard({
           isLoading={metrics.isLoading}
         />
       </section>
+
+      {statusMessage ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {statusMessage}
+        </div>
+      ) : null}
 
       <AdminDataTable<LeadRow>
         recordLabel="High-Intent Leads"
@@ -291,6 +314,12 @@ export function WorkspaceCommandDashboard({
         emptyMessage="No replied leads yet."
         onRowClick={(lead) => setSelectedLead(lead)}
       />
+
+      <p className="text-xs leading-relaxed text-gray-500">
+        Move to Follow-Up or Closed Won updates pipeline status in Halton and removes the lead from
+        this replied list. Notion sync is not wired yet — handle follow-up in Gmail until calls are
+        booking consistently.
+      </p>
 
       <HighIntentLeadDrawer
         lead={selectedLead}
