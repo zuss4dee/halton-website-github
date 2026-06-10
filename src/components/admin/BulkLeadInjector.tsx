@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { BulkImportStatus } from "@/components/admin/ImportStatusBanner";
 import { DeleteLeadDialog } from "@/components/admin/DeleteLeadDialog";
 import {
   clearPendingApprovalQueue,
@@ -14,6 +14,7 @@ import {
 
 type BulkLeadInjectorProps = {
   clientId: string;
+  onImportStatusChange?: (status: BulkImportStatus | null) => void;
   onProcessingComplete?: () => void;
   onQueueCleared?: () => void;
 };
@@ -27,6 +28,7 @@ type ProcessSummary = {
 
 export function BulkLeadInjector({
   clientId,
+  onImportStatusChange,
   onProcessingComplete,
   onQueueCleared,
 }: BulkLeadInjectorProps) {
@@ -35,35 +37,55 @@ export function BulkLeadInjector({
   const [parseError, setParseError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [summary, setSummary] = useState<ProcessSummary | null>(null);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [isClearing, setIsClearing] = useState(false);
+  const lastQueueRefreshRef = useRef(0);
 
   const workspaceClientId = clientId.trim();
   const [pasteText, setPasteText] = useState("");
 
-  const ingestCsvText = useCallback((text: string, sourceLabel: string) => {
-    setParseError(null);
-    setSummary(null);
+  const publishImportStatus = useCallback(
+    (status: BulkImportStatus | null) => {
+      onImportStatusChange?.(status);
+    },
+    [onImportStatusChange],
+  );
 
-    try {
-      const leads = parseBulkLeadCsv(text);
-      if (leads.length === 0) {
-        setParseError("No valid rows found. Include a header row and at least one email.");
+  const maybeRefreshQueue = useCallback(() => {
+    const now = Date.now();
+    if (now - lastQueueRefreshRef.current < 2500) return;
+    lastQueueRefreshRef.current = now;
+    onProcessingComplete?.();
+  }, [onProcessingComplete]);
+
+  const ingestCsvText = useCallback(
+    (text: string, sourceLabel: string) => {
+      if (isProcessing) return;
+
+      setParseError(null);
+      setSummary(null);
+      publishImportStatus(null);
+
+      try {
+        const leads = parseBulkLeadCsv(text);
+        if (leads.length === 0) {
+          setParseError("No valid rows found. Include a header row and at least one email.");
+          setParsedLeads([]);
+          setFileName(null);
+          return;
+        }
+        setParsedLeads(leads);
+        setFileName(sourceLabel);
+      } catch (error) {
+        setParseError(error instanceof Error ? error.message : "Failed to parse CSV.");
         setParsedLeads([]);
         setFileName(null);
-        return;
       }
-      setParsedLeads(leads);
-      setFileName(sourceLabel);
-    } catch (error) {
-      setParseError(error instanceof Error ? error.message : "Failed to parse CSV.");
-      setParsedLeads([]);
-      setFileName(null);
-    }
-  }, []);
+    },
+    [isProcessing, publishImportStatus],
+  );
 
   const ingestFile = useCallback(
     (file: File) => {
@@ -116,16 +138,37 @@ export function BulkLeadInjector({
     if (!workspaceClientId || parsedLeads.length === 0 || isProcessing) return;
 
     const total = parsedLeads.length;
+    const activeFileName = fileName;
 
     setIsProcessing(true);
     setSummary(null);
     setParseError(null);
-    setProgress({ current: 0, total });
+    lastQueueRefreshRef.current = 0;
+
+    publishImportStatus({
+      phase: "processing",
+      current: 0,
+      total,
+      fileName: activeFileName,
+    });
+
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
 
     try {
       const graph = await fetchActiveWorkflowGraph(workspaceClientId);
       if (!graph) {
-        setParseError("No active workflow found. Save and activate a SOP in the Workflow Builder first.");
+        const message =
+          "No active workflow found. Save and activate a SOP in the Workflow Builder first.";
+        setParseError(message);
+        publishImportStatus({
+          phase: "error",
+          current: 0,
+          total,
+          fileName: activeFileName,
+          errorMessage: message,
+        });
         return;
       }
 
@@ -134,12 +177,19 @@ export function BulkLeadInjector({
 
       for (let index = 0; index < parsedLeads.length; index++) {
         const lead = parsedLeads[index];
-        setProgress({ current: index + 1, total: parsedLeads.length });
+        const current = index + 1;
+
+        publishImportStatus({
+          phase: "processing",
+          current,
+          total,
+          fileName: activeFileName,
+        });
 
         const result = await invokeOutboundForLead(workspaceClientId, lead, graph);
         if (result.success) {
           succeeded += 1;
-          onProcessingComplete?.();
+          maybeRefreshQueue();
         } else {
           errors.push({
             email: lead.email,
@@ -156,6 +206,17 @@ export function BulkLeadInjector({
       };
 
       setSummary(nextSummary);
+      publishImportStatus({
+        phase: "done",
+        current: total,
+        total,
+        fileName: activeFileName,
+        succeeded,
+        failed: nextSummary.failed,
+        errors,
+      });
+
+      onProcessingComplete?.();
 
       if (nextSummary.failed === 0) {
         toast.success(`Imported ${succeeded}/${total} leads into Pending Approval.`);
@@ -165,6 +226,13 @@ export function BulkLeadInjector({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Import failed.";
       setParseError(message);
+      publishImportStatus({
+        phase: "error",
+        current: 0,
+        total,
+        fileName: activeFileName,
+        errorMessage: message,
+      });
       toast.error(message);
     } finally {
       setIsProcessing(false);
@@ -213,6 +281,7 @@ export function BulkLeadInjector({
       setPasteText("");
       setSummary(null);
       setParseError(null);
+      publishImportStatus(null);
       onQueueCleared?.();
     } finally {
       setIsClearing(false);
@@ -239,105 +308,13 @@ export function BulkLeadInjector({
         </button>
       </div>
 
-      {isProcessing || summary ? (
-        <div
-          className={`mt-6 rounded-lg border px-4 py-4 ${
-            isProcessing
-              ? "border-amber-200 bg-amber-50"
-              : summary && summary.failed === 0
-                ? "border-emerald-200 bg-emerald-50"
-                : "border-red-200 bg-red-50"
-          }`}
-        >
-          {isProcessing ? (
-            <div className="flex items-start gap-3">
-              <Loader2
-                className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-amber-700"
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-amber-950">
-                  Importing {progress.current}/{progress.total} leads
-                  {fileName ? ` · ${fileName}` : ""}
-                </p>
-                <p className="mt-1 text-xs text-amber-900/80">
-                  Running research and draft generation for each row. Drafts appear in Pending
-                  Approval as they finish — you can scroll down and start reviewing while this
-                  runs.
-                </p>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-amber-200/80">
-                  <div
-                    className="h-full rounded-full bg-amber-600 transition-all duration-300"
-                    style={{
-                      width:
-                        progress.total > 0
-                          ? `${Math.round((progress.current / progress.total) * 100)}%`
-                          : "0%",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : summary ? (
-            <div className="flex items-start gap-3">
-              {summary.failed === 0 ? (
-                <CheckCircle2
-                  className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700"
-                  aria-hidden
-                />
-              ) : (
-                <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" aria-hidden />
-              )}
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`text-sm font-medium ${
-                    summary.failed === 0 ? "text-emerald-950" : "text-red-950"
-                  }`}
-                >
-                  {summary.failed === 0
-                    ? `Imported ${summary.succeeded}/${summary.total} leads into Pending Approval`
-                    : `Imported ${summary.succeeded}/${summary.total} leads · ${summary.failed} failed`}
-                </p>
-                <p
-                  className={`mt-1 text-xs ${
-                    summary.failed === 0 ? "text-emerald-900/80" : "text-red-900/80"
-                  }`}
-                >
-                  {summary.failed === 0
-                    ? "All drafts are ready for review in Pending Approval below."
-                    : "Successful rows are in Pending Approval. Fix failed rows and re-import if needed."}
-                </p>
-                {summary.errors.length > 0 ? (
-                  <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto text-xs text-red-800">
-                    {summary.errors.slice(0, 8).map((entry) => (
-                      <li key={entry.email}>
-                        {entry.email}: {entry.message}
-                      </li>
-                    ))}
-                    {summary.errors.length > 8 ? (
-                      <li>…and {summary.errors.length - 8} more</li>
-                    ) : null}
-                  </ul>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setSummary(null)}
-                  className="mt-3 text-xs font-medium text-gray-600 underline-offset-2 hover:underline"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
       <DeleteLeadDialog
         open={clearDialogOpen}
         onOpenChange={setClearDialogOpen}
         selectedCount={pendingQueueCount}
         onConfirm={handleClearPendingQueue}
       />
+
       <label
         onDragLeave={() => setIsDragging(false)}
         className={`relative flex min-h-[140px] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
@@ -358,9 +335,7 @@ export function BulkLeadInjector({
           aria-label="Upload CSV file"
         />
         <div className="pointer-events-none relative z-0 flex w-full flex-col items-center">
-          <span className="text-sm text-gray-500">
-            Drop CSV here or click to browse
-          </span>
+          <span className="text-sm text-gray-500">Drop CSV here or click to browse</span>
           <p className="mt-2 max-w-md text-sm text-gray-500">
             Standard CSV — no Apollo export required. Required:{" "}
             <code className="text-gray-700">email</code>. Recommended:{" "}
@@ -404,9 +379,7 @@ export function BulkLeadInjector({
         </button>
       </div>
 
-      {parseError ? (
-        <p className="mt-3 text-sm text-red-600">{parseError}</p>
-      ) : null}
+      {parseError ? <p className="mt-3 text-sm text-red-600">{parseError}</p> : null}
 
       {parsedLeads.length > 0 && !isProcessing && !summary ? (
         <button
