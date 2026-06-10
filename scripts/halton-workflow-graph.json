@@ -23,7 +23,7 @@
       "data": {
         "label": "Company Research",
         "url": "{{steps.apollo-1.website}}",
-        "task": "Summarize what the company sells, who they serve, and one specific outreach hook. Use only facts from the scrape."
+        "task": "In plain English, say what the company sells and who they sell to. Under 60 words. No bullet points or invented stats."
       }
     },
     {
@@ -32,7 +32,7 @@
       "position": { "x": 250, "y": 340 },
       "data": {
         "label": "DeepSeek Writer",
-        "prompt": "Write a casual, 2-3 sentence cold email to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Ground your hook in this company research (never invent facts not supported here): {{steps.research-1.brief}}. If the research brief is empty, stay specific to name, role, and company only — do not use generic industry filler. End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks."
+        "prompt": "Write a casual 2-3 sentence cold email to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Use ONE plain-English observation from this research about what their company does (no jargon stacks, no invented stats): {{steps.research-1.brief}}. Then ask if they are open to a 15-minute call. Do NOT include your name, sign-off, or signature — that is added automatically. Do NOT pitch Halton with buzzwords. Write like a founder texting another founder."
       }
     },
     {

@@ -18,11 +18,26 @@ To opt out of future emails, just reply 'stop'.`;
 
 const SIGNATURE_MARKER = "Founder | Halton Works";
 
-/** AI drafts sign off as "Damilare" — strip it so the full block isn't doubled. */
+/** AI drafts sometimes sign off inline — strip before appending the real signature block. */
 const AI_SIGNOFF_LINE = /^[\s—–-]*(best|warm regards|regards|cheers|thanks|thank you)?[,\s]*(Damilare(\s+Adeosun)?)?[\s.,!]*$/i;
+const INLINE_SENDER_NAME_SUFFIX = /[,]\s*Damilare(\s+Adeosun)?\s*[.!?]?\s*$/i;
+const TRAILING_SENDER_DASH = /\s+[-–—]\s*Damilare(\s+Adeosun)?\s*[.!?]?\s*$/i;
+
+function stripInlineSenderName(body: string): string {
+  let result = body.trimEnd();
+  for (let i = 0; i < 3; i++) {
+    const next = result
+      .replace(INLINE_SENDER_NAME_SUFFIX, ".")
+      .replace(TRAILING_SENDER_DASH, "")
+      .trimEnd();
+    if (next === result) break;
+    result = next;
+  }
+  return result;
+}
 
 function stripTrailingAiSignoff(body: string): string {
-  const lines = body.trimEnd().split(/\r?\n/);
+  const lines = stripInlineSenderName(body).trimEnd().split(/\r?\n/);
   while (lines.length > 0) {
     const last = lines[lines.length - 1].trim();
     if (last && !AI_SIGNOFF_LINE.test(last)) break;

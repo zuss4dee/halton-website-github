@@ -79,16 +79,16 @@ Evaluate the sanitized email BODY against brand guidelines. Return ONLY valid JS
 {"verdict":"approved"|"qa_rejected"|"needs_human_review","violations":["reason 1"]}
 
 Rules:
-- approved: no banned/spam words, correct casual B2B tone, max 3 sentences, signed as Damilare, no placeholders, no subject line in body
+- approved: no banned/spam words, correct casual B2B tone, max 3 sentences, no sender sign-off in body (signature added later), no placeholders, no subject line in body
 - qa_rejected: clear violations (spam triggers, wrong tone, placeholders, subject in body, too long)
 - needs_human_review: ambiguous edge cases or uncertain brand fit`;
 
 const DEFAULT_DEEPSEEK_PROMPT =
-  "Write a casual, 2-3 sentence cold email to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Ground your hook in this company research (never invent facts): {{steps.RESEARCH_NODE.brief}}. If research is empty, stay specific to name, role, and company only. End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+  "Write a casual 2-3 sentence cold email to {{steps.APOLLO_NODE.first_name}}, the {{steps.APOLLO_NODE.title}} at {{steps.APOLLO_NODE.company}}. Use ONE plain-English observation from this research about what their company does (no jargon stacks, no invented stats): {{steps.RESEARCH_NODE.brief}}. Then ask if they are open to a 15-minute call. Do NOT include your name, sign-off, or signature — that is added automatically. If research is empty, mention their company and role only. Write like a founder texting another founder.";
 
 const DEFAULT_RESEARCH_CONDENSER_PROMPT = `You condense scraped company web content into a short research brief for cold email personalization.
-Output plain text only (2-4 bullet points or short sentences). Include: what they sell, who they serve, one specific outreach hook.
-Never invent facts not present in the scrape. If the scrape is thin, say so briefly.`;
+Output plain English only (2-3 short sentences). Say what the company sells and who they sell to in words a non-technical founder would use.
+Never invent stats. Never use bullet points or markdown. Keep it under 60 words.`;
 
 const DEFAULT_RESEARCH_AGENT_ROLE = "COMPANY_RESEARCHER";
 
@@ -140,9 +140,10 @@ const NO_DASH_RULE =
 const DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS = `STRICT NEGATIVE CONSTRAINTS (violating any rule = failed output):
 1. FATAL ERROR IF: You include the word "Subject:" or the actual subject line in your output. Output ONLY the body copy.
 2. FATAL ERROR IF: The text is longer than 3 sentences. You MUST use heavy line breaks between sentences.
-3. FATAL ERROR IF: You use placeholders like [Your Name]. Always sign off as "Damilare".
-4. FATAL ERROR IF: You invent or swap prospect names. Check the prospect's actual name in the user message (draft). Do not hallucinate names like "Mark" if the draft uses a different name.
-5. FATAL ERROR IF: You use em dashes (—), en dashes (–), or spaced hyphens ( - ) as punctuation. ${NO_DASH_RULE}`;
+3. FATAL ERROR IF: You use placeholders like [Your Name].
+4. FATAL ERROR IF: You include ANY sender sign-off or sender name (Best, Regards, Damilare, Damilare Adeosun). Signature is appended automatically.
+5. FATAL ERROR IF: You invent or swap prospect names. Check the prospect's actual name in the user message (draft). Do not hallucinate names like "Mark" if the draft uses a different name.
+6. FATAL ERROR IF: You use em dashes (—), en dashes (–), or spaced hyphens ( - ) as punctuation. ${NO_DASH_RULE}`;
 
 const DELIVERABILITY_CHIEF_FALLBACK_PROMPT = `You are the DELIVERABILITY_CHIEF — a draconian cold-email deliverability critic.
 
@@ -154,7 +155,8 @@ Operational rules:
 - Preserve the core intent and CTA from the draft
 - Do not add links unless the draft already had them
 - Maximum 3 sentences total, each on its own line with heavy line breaks
-- Sign off exactly as Damilare (never placeholders)
+- Rewrite jargon or invented stats into plain English a busy founder understands
+- Do NOT include a sign-off or sender name — signature is appended automatically
 - Return ONLY the sanitized email body — no preamble, quotes, labels, markdown fences, or subject line
 
 ${DELIVERABILITY_CHIEF_FATAL_CONSTRAINTS}`;
@@ -1081,8 +1083,8 @@ function collectHeuristicQaViolations(copy: string): string[] {
   if (/[—–]/.test(countableBody) || /\S\s+-\s+\S/.test(countableBody)) {
     violations.push("Uses dash punctuation (em/en dash or spaced hyphen)");
   }
-  if (!/Damilare/i.test(trimmed)) {
-    violations.push("Missing signature (Damilare)");
+  if (/\bDamilare(\s+Adeosun)?\b/i.test(countableBody)) {
+    violations.push("Sender name in body (signature is appended automatically)");
   }
   return violations;
 }
@@ -1901,7 +1903,7 @@ serve(async (req) => {
                 prompt += `\n\nPrevious rejected subject: ${priorDraftSubject.slice(0, 200)}`;
               }
               prompt +=
-                "\n\nWrite a new email body only. Address the operator rejection directly. Keep it under 3 sentences before the Damilare sign-off.";
+                "\n\nWrite a new email body only. Address the operator rejection directly. Keep it under 3 sentences. No sign-off or sender name.";
             }
 
             const writerResult = await runDeepseekWithAgent(

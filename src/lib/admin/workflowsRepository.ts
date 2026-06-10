@@ -26,7 +26,7 @@ export type WorkflowExecutorType = (typeof WORKFLOW_EXECUTOR_TYPES)[number];
 
 /** Generic writer prompt — CEO/workflow graph should override per workspace via knowledge vault. */
 export const DEFAULT_RESEARCH_AWARE_WRITER_PROMPT =
-  "Write a casual, 2-3 sentence cold email to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Ground your hook in this company research (never invent facts not supported here): {{steps.research-1.brief}}. If the research brief is empty, stay specific to name, role, and company only — do not use generic industry filler. End with a soft ask for a 15-minute call. Do not include placeholders or signature blocks.";
+  "Write a casual 2-3 sentence cold email to {{steps.apollo-1.first_name}}, the {{steps.apollo-1.title}} at {{steps.apollo-1.company}}. Use ONE plain-English observation from this research about what their company does (no jargon stacks, no invented stats): {{steps.research-1.brief}}. Then ask if they are open to a 15-minute call. Do NOT include your name, sign-off, or signature — that is added automatically. Do NOT pitch Halton with buzzwords. Write like a founder texting another founder.";
 
 /** @deprecated Halton seed only — prefer CEO-built prompts from knowledge vault */
 export const HALTON_SAAS_WRITER_PROMPT = DEFAULT_RESEARCH_AWARE_WRITER_PROMPT;
