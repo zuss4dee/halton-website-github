@@ -35,6 +35,27 @@ export const PENDING_APPROVAL_QUEUE_STATUSES = [
 
 export type LeadQueueStatus = (typeof LEAD_QUEUE_STATUS)[keyof typeof LEAD_QUEUE_STATUS];
 
+/** Pipeline statuses that count as a reply for reply-rate analytics. */
+export const REPLIED_PIPELINE_STATUSES = [
+  "replied",
+  "follow_up",
+  "closed_won",
+  "positive_reply",
+  "qualified",
+] as const;
+
+/** Outbound still in flight — awaiting reply or mid-sequence. */
+export const ACTIVE_OUTBOUND_QUEUE_STATUSES = [
+  LEAD_QUEUE_STATUS.SENT,
+  LEAD_QUEUE_STATUS.ACTIVE,
+  LEAD_QUEUE_STATUS.PAUSED,
+] as const;
+
+export function formatReplyRate(replied: number, emailsSent: number): string {
+  if (emailsSent <= 0) return "—";
+  return `${((replied / emailsSent) * 100).toFixed(1)}%`;
+}
+
 /** Pipeline statuses treated as high-intent for the closer dashboard */
 export const HIGH_INTENT_LEAD_STATUSES = [
   "replied",

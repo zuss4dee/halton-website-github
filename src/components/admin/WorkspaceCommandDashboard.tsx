@@ -14,7 +14,14 @@ import {
   readInboundReplyFromLead,
   truncateReplyPreview,
 } from "@/lib/admin/inboundReply";
-import { LEAD_QUEUE_STATUS, HUMAN_REVIEW_QUEUE_STATUSES, type LeadRow } from "@/lib/admin/leadsRepository";
+import {
+  ACTIVE_OUTBOUND_QUEUE_STATUSES,
+  formatReplyRate,
+  HUMAN_REVIEW_QUEUE_STATUSES,
+  LEAD_QUEUE_STATUS,
+  REPLIED_PIPELINE_STATUSES,
+  type LeadRow,
+} from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
 type WorkspaceCommandDashboardProps = {
@@ -25,7 +32,8 @@ type WorkspaceCommandDashboardProps = {
 type DashboardMetrics = {
   totalLeads: number;
   pendingReview: number;
-  sentEmails: number;
+  emailsSent: number;
+  activeOutbound: number;
   repliedLeads: number;
   totalAgentOps: number;
   isLoading: boolean;
@@ -34,17 +42,12 @@ type DashboardMetrics = {
 const INITIAL_METRICS: DashboardMetrics = {
   totalLeads: 0,
   pendingReview: 0,
-  sentEmails: 0,
+  emailsSent: 0,
+  activeOutbound: 0,
   repliedLeads: 0,
   totalAgentOps: 0,
   isLoading: true,
 };
-
-function formatReplyRate(replied: number, sent: number): string {
-  if (sent <= 0) return "—";
-  const rate = (replied / sent) * 100;
-  return `${rate.toFixed(1)}%`;
-}
 
 function formatPipelineStatus(lead: LeadRow): string {
   const status = lead.status?.trim().toLowerCase() ?? "";
@@ -92,7 +95,7 @@ export function WorkspaceCommandDashboard({
   const fetchMetrics = useCallback(async () => {
     setMetrics((prev) => ({ ...prev, isLoading: true }));
 
-    const [leads, pending, sent, replied, agentOps] = await Promise.all([
+    const [leads, pending, emailsSent, activeOutbound, replied, agentOps] = await Promise.all([
       supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
@@ -106,12 +109,17 @@ export function WorkspaceCommandDashboard({
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId)
-        .eq("queue_status", "sent"),
+        .not("sent_at", "is", null),
       supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId)
-        .eq("status", "replied"),
+        .in("queue_status", [...ACTIVE_OUTBOUND_QUEUE_STATUSES]),
+      supabase
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .eq("client_id", clientId)
+        .in("status", [...REPLIED_PIPELINE_STATUSES]),
       supabase
         .from("agent_logs")
         .select("*", { count: "exact", head: true })
@@ -120,14 +128,16 @@ export function WorkspaceCommandDashboard({
 
     if (leads.error) console.error("DASHBOARD leads count:", leads.error);
     if (pending.error) console.error("DASHBOARD pending count:", pending.error);
-    if (sent.error) console.error("DASHBOARD sent count:", sent.error);
+    if (emailsSent.error) console.error("DASHBOARD emails sent count:", emailsSent.error);
+    if (activeOutbound.error) console.error("DASHBOARD active outbound count:", activeOutbound.error);
     if (replied.error) console.error("DASHBOARD replied count:", replied.error);
     if (agentOps.error) console.error("DASHBOARD agent_logs count:", agentOps.error);
 
     setMetrics({
       totalLeads: leads.count ?? 0,
       pendingReview: pending.count ?? 0,
-      sentEmails: sent.count ?? 0,
+      emailsSent: emailsSent.count ?? 0,
+      activeOutbound: activeOutbound.count ?? 0,
       repliedLeads: replied.count ?? 0,
       totalAgentOps: agentOps.count ?? 0,
       isLoading: false,
@@ -217,7 +227,7 @@ export function WorkspaceCommandDashboard({
           value={
             metrics.isLoading
               ? "—"
-              : formatReplyRate(metrics.repliedLeads, metrics.sentEmails)
+              : formatReplyRate(metrics.repliedLeads, metrics.emailsSent)
           }
           isLoading={metrics.isLoading}
         />
@@ -227,8 +237,13 @@ export function WorkspaceCommandDashboard({
           isLoading={metrics.isLoading}
         />
         <AdminKpiCard
-          label="Active Outbound"
-          value={metrics.sentEmails.toLocaleString()}
+          label="Emails Sent"
+          value={metrics.emailsSent.toLocaleString()}
+          isLoading={metrics.isLoading}
+        />
+        <AdminKpiCard
+          label="Awaiting Reply"
+          value={metrics.activeOutbound.toLocaleString()}
           isLoading={metrics.isLoading}
         />
         <AdminKpiCard

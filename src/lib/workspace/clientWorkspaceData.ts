@@ -4,6 +4,10 @@ import {
   truncateReplyPreview,
 } from "@/lib/admin/inboundReply";
 import type { ClientRow, LeadRow } from "@/lib/admin/leadsRepository";
+import {
+  formatReplyRate,
+  REPLIED_PIPELINE_STATUSES,
+} from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
 const UUID_PATTERN =
@@ -29,12 +33,12 @@ export type ClientWorkspacePayload = {
 };
 
 function formatOpenRate(replies: number, sent: number): { value: string; caption: string } {
-  if (sent <= 0) {
-    return { value: "—", caption: "NO_SENDS_RECORDED" };
+  const value = formatReplyRate(replies, sent);
+  if (value === "—") {
+    return { value, caption: "NO_SENDS_RECORDED" };
   }
-  const rate = (replies / sent) * 100;
   return {
-    value: `${rate.toFixed(1)}%`,
+    value,
     caption: "REPLIES ÷ SENT // ENGAGEMENT_PROXY",
   };
 }
@@ -84,12 +88,12 @@ export async function fetchClientWorkspaceData(
       .from("leads")
       .select("*", { count: "exact", head: true })
       .eq("client_id", clientId)
-      .eq("queue_status", "sent"),
+      .not("sent_at", "is", null),
     supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
       .eq("client_id", clientId)
-      .eq("status", "replied"),
+      .in("status", [...REPLIED_PIPELINE_STATUSES]),
     supabase
       .from("leads")
       .select("*")
