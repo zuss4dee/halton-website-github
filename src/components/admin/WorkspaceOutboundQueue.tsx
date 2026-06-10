@@ -7,7 +7,6 @@ import {
   LEAD_QUEUE_STATUS,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
-import { AddLeadTrigger } from "@/components/admin/AddLeadSheet";
 import {
   loadDraftFromLead,
   OutboundDraftEditor,
@@ -40,7 +39,6 @@ type WorkspaceOutboundQueueProps = {
   clientId: string;
   refreshKey?: number;
   embedded?: boolean;
-  onAddLead?: () => void;
 };
 
 /** Alias for workspace human review queue & outbox */
@@ -113,7 +111,6 @@ export function WorkspaceOutboundQueue({
   clientId,
   refreshKey = 0,
   embedded = false,
-  onAddLead,
 }: WorkspaceOutboundQueueProps) {
   const { hasPendingDrafts, refetch: refetchAttention } = useWorkspaceAttention(clientId, {
     refreshKey,
@@ -530,9 +527,8 @@ export function WorkspaceOutboundQueue({
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-4">
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="mb-4">
             <h2 className="text-sm font-medium text-gray-700">{listHeading}</h2>
-            {onAddLead ? <AddLeadTrigger onClick={onAddLead} /> : null}
           </div>
 
           <div className="flex max-h-[600px] flex-col rounded-lg border border-gray-200 bg-white">

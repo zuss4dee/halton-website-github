@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { AddLeadSheet } from "@/components/admin/AddLeadSheet";
 import { BulkLeadInjector } from "@/components/admin/BulkLeadInjector";
 import { HumanReviewQueue } from "@/components/admin/WorkspaceOutboundQueue";
 
@@ -10,7 +9,8 @@ type WorkspaceOutboundPageProps = {
 
 export function WorkspaceOutboundPage({ clientId }: WorkspaceOutboundPageProps) {
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
-  const [addLeadOpen, setAddLeadOpen] = useState(false);
+
+  const bumpQueueRefresh = () => setQueueRefreshKey((key) => key + 1);
 
   return (
     <div className="space-y-10">
@@ -28,24 +28,15 @@ export function WorkspaceOutboundPage({ clientId }: WorkspaceOutboundPageProps) 
         </p>
       </header>
 
-      <BulkLeadInjector
-        clientId={clientId}
-        onProcessingComplete={() => setQueueRefreshKey((key) => key + 1)}
-      />
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <BulkLeadInjector
+          clientId={clientId}
+          onProcessingComplete={bumpQueueRefresh}
+          onQueueCleared={bumpQueueRefresh}
+        />
+      </div>
 
-      <AddLeadSheet
-        clientId={clientId}
-        open={addLeadOpen}
-        onOpenChange={setAddLeadOpen}
-        onSuccess={() => setQueueRefreshKey((key) => key + 1)}
-      />
-
-      <HumanReviewQueue
-        clientId={clientId}
-        refreshKey={queueRefreshKey}
-        embedded
-        onAddLead={() => setAddLeadOpen(true)}
-      />
+      <HumanReviewQueue clientId={clientId} refreshKey={queueRefreshKey} embedded />
     </div>
   );
 }

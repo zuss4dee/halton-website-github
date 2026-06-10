@@ -1,4 +1,10 @@
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import { DeleteLeadDialog } from "@/components/admin/DeleteLeadDialog";
+import {
+  clearPendingApprovalQueue,
+  countPendingApprovalQueue,
+} from "@/lib/admin/clearApprovalQueue";
 import { parseBulkLeadCsv, type BulkLeadRow } from "@/lib/admin/bulkLeadCsv";
 import {
   fetchActiveWorkflowGraph,
@@ -8,6 +14,7 @@ import {
 type BulkLeadInjectorProps = {
   clientId: string;
   onProcessingComplete?: () => void;
+  onQueueCleared?: () => void;
 };
 
 type ProcessSummary = {
@@ -17,7 +24,11 @@ type ProcessSummary = {
   errors: Array<{ email: string; message: string }>;
 };
 
-export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInjectorProps) {
+export function BulkLeadInjector({
+  clientId,
+  onProcessingComplete,
+  onQueueCleared,
+}: BulkLeadInjectorProps) {
   const [parsedLeads, setParsedLeads] = useState<BulkLeadRow[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -25,6 +36,9 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [summary, setSummary] = useState<ProcessSummary | null>(null);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [pendingQueueCount, setPendingQueueCount] = useState(0);
+  const [isClearing, setIsClearing] = useState(false);
 
   const workspaceClientId = clientId.trim();
   const [pasteText, setPasteText] = useState("");
@@ -139,8 +153,80 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
     onProcessingComplete?.();
   };
 
+  const handleOpenClearDialog = async () => {
+    if (!workspaceClientId || isProcessing) return;
+
+    try {
+      const count = await countPendingApprovalQueue(workspaceClientId);
+      if (count === 0) {
+        toast.info("Pending approval queue is already empty.");
+        return;
+      }
+      setPendingQueueCount(count);
+      setClearDialogOpen(true);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not count pending queue leads.",
+      );
+    }
+  };
+
+  const handleClearPendingQueue = async () => {
+    if (!workspaceClientId) return;
+
+    setIsClearing(true);
+    try {
+      const result = await clearPendingApprovalQueue(workspaceClientId);
+
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+
+      if (result.deleted === 0) {
+        toast.info("Pending approval queue is already empty.");
+      } else {
+        toast.success(
+          `Cleared ${result.deleted} lead${result.deleted === 1 ? "" : "s"} from pending approval.`,
+        );
+      }
+
+      setParsedLeads([]);
+      setFileName(null);
+      setPasteText("");
+      setSummary(null);
+      setParseError(null);
+      onQueueCleared?.();
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   return (
     <section className="w-full">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Add leads</h2>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500">
+            Drop a CSV file or paste one lead row or many — same format either way. Parse first,
+            then inject drafts into Pending Approval.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleOpenClearDialog()}
+          disabled={isProcessing || isClearing}
+          className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-800 transition-colors hover:border-red-300 hover:bg-red-100 disabled:opacity-40"
+        >
+          Clear pending queue
+        </button>
+      </div>
+
+      <DeleteLeadDialog
+        open={clearDialogOpen}
+        onOpenChange={setClearDialogOpen}
+        selectedCount={pendingQueueCount}
+        onConfirm={handleClearPendingQueue}
+      />
       <label
         onDragLeave={() => setIsDragging(false)}
         className={`relative flex min-h-[140px] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
@@ -183,11 +269,10 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
       <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
         <p className="text-sm font-medium text-gray-700">Or paste CSV</p>
         <p className="mt-1 text-xs text-gray-500">
-          Include the header row, then your lead rows. Optional columns:{" "}
+          One lead or many — include the header row, then your row(s). Optional:{" "}
           <code className="text-gray-700">website</code>,{" "}
           <code className="text-gray-700">research_url</code>,{" "}
-          <code className="text-gray-700">linkedin_url</code>. Each inject is logged to CEO
-          operational memory.
+          <code className="text-gray-700">linkedin_url</code>.
         </p>
         <textarea
           value={pasteText}
@@ -219,7 +304,7 @@ export function BulkLeadInjector({ clientId, onProcessingComplete }: BulkLeadInj
           disabled={!workspaceClientId}
           className="mt-4 w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
         >
-          Inject {parsedLeads.length} Leads
+      {parsedLeads.length === 1 ? "Inject 1 Lead" : `Inject ${parsedLeads.length} Leads`}
         </button>
       ) : null}
 
