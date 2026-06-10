@@ -255,8 +255,9 @@ export function AgentStudioPage({ clientId, agentId }: AgentStudioPageProps) {
             <h2 className="mb-1 text-lg font-semibold text-gray-900">System prompt</h2>
             {agent.role?.trim().toUpperCase() === "CEO" ? (
               <p className="mb-4 text-sm text-gray-500">
-                Saved here as <code className="text-xs">agents.system_prompt</code> and injected
-                dynamically on every CEO mission dispatch.
+                Workspace CEO orchestration prompt — saved as{" "}
+                <code className="text-xs">agents.system_prompt</code> and injected on every
+                mission dispatch.
               </p>
             ) : (
               <div className="mb-4" />
