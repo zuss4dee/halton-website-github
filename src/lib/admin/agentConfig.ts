@@ -48,6 +48,13 @@ export const AGENT_SKILL_DEFINITIONS: AgentSkillDefinition[] = [
     scopes: ["ceo", "sub_agent"],
   },
   {
+    id: "get_workspace_outbound_metrics",
+    label: "Workspace Outbound Metrics",
+    description:
+      "Live send volume, pending review, inbox replies, and reply rate for this workspace.",
+    scopes: ["ceo"],
+  },
+  {
     id: "executive_override",
     label: "Executive Override",
     description:
@@ -106,6 +113,7 @@ const CEO_DEFAULT_SKILLS = [
   "build_automation",
   "delegate_sub_agent",
   "fetch_crm_lead",
+  "get_workspace_outbound_metrics",
   "executive_override",
 ] as const;
 
@@ -275,6 +283,7 @@ const CEO_SKILL_TOOL_MAP: Record<string, string> = {
   write_knowledge_vault: "save_to_knowledge_vault",
   build_automation: "build_and_run_automation",
   fetch_crm_lead: "fetch_crm_lead",
+  get_workspace_outbound_metrics: "get_workspace_outbound_metrics",
   executive_override: "execute_executive_override",
   hire_sub_agent: "hireSubAgent",
   trigger_outbound_campaign: "triggerOutboundCampaign",

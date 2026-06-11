@@ -48,6 +48,7 @@ import { getSupabaseServer } from "@/lib/supabase-server";
 import { getEffectiveToolBindings } from "@/lib/admin/agentStudio";
 import { formatReplyContextForCeo, type TerminalReplyContext } from "@/lib/admin/terminalReply";
 import { fetchCrmLeadsForWorkspace } from "@/lib/admin/fetchCrmLead";
+import { fetchWorkspaceOutboundMetrics } from "@/lib/admin/fetchWorkspaceOutboundMetrics";
 
 import { deepseek } from "./providers";
 import { executeDynamicAgent, executeSubAgent, executeSubAgentById } from "./sub-agent-router";
@@ -218,6 +219,8 @@ ${CEO_AUTONOMY_RULES}
 
 --- OPERATOR PIPELINE OVERSIGHT ---
 Human CSV injects and queue regenerates run the saved workflow directly for speed, but every outbound pipeline execution is logged to agent_logs (event OUTBOUND_PIPELINE) and agent_memory under this workspace. You are always notified via operational memory. Proactively review pending drafts in the Human Review Queue when memory shows new bulk_csv_inject or operator_regenerate runs.
+
+For send volume, reply rate, pending review count, or "how many emails sent" questions: call get_workspace_outbound_metrics first. Operational memory reflects draft queuing — not authoritative send counts. fetch_crm_lead searches individual leads only; never use it for aggregate metrics.
 `;
 
   await logInsert(executionId, clientId, ceoAgent.id, "SPAWN", {
@@ -449,7 +452,7 @@ Human CSV injects and queue regenerates run the saved workflow directly for spee
     }),
     fetch_crm_lead: tool({
       description:
-        "FETCH_CRM_LEAD: Search the workspace Leads CRM by name, email, or company. Returns matching leads with first name, last name, email, company, and status. Use before building outbound automations when the operator references a specific person.",
+        "FETCH_CRM_LEAD: Search the workspace Leads CRM by name, email, or company. Returns matching leads with first name, last name, email, company, and status. Use when the operator names a specific person — NOT for aggregate send counts or reply rates.",
       inputSchema: z.object({
         search_query: z
           .string()
@@ -479,6 +482,37 @@ Human CSV injects and queue regenerates run the saved workflow directly for spee
           action: "FETCH_CRM_LEAD",
           count: result.count,
           search_query: result.search_query,
+        });
+
+        return JSON.stringify(result, null, 2);
+      },
+    }),
+    get_workspace_outbound_metrics: tool({
+      description:
+        "GET_WORKSPACE_OUTBOUND_METRICS: Live outbound telemetry for this workspace — emails sent (sent_at), pending human review, inbox replies, awaiting reply, total prospects, reply rate. ALWAYS call this when the operator asks how many emails were sent, reply rate, queue status, or campaign volume. Do not guess from operational memory.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_CALL", {
+          action: "GET_WORKSPACE_OUTBOUND_METRICS",
+        });
+
+        const result = await fetchWorkspaceOutboundMetrics(clientId);
+
+        if ("error" in result) {
+          await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+            status: "ERROR",
+            action: "GET_WORKSPACE_OUTBOUND_METRICS",
+            message: result.error,
+          });
+          return JSON.stringify({ error: result.error });
+        }
+
+        await logInsert(executionId, clientId, ceoAgent.id, "TOOL_RESULT", {
+          status: "SUCCESS",
+          action: "GET_WORKSPACE_OUTBOUND_METRICS",
+          emails_sent: result.emails_sent,
+          inbox_replies: result.inbox_replies,
+          pending_review: result.pending_review,
         });
 
         return JSON.stringify(result, null, 2);
@@ -1466,6 +1500,7 @@ Human CSV injects and queue regenerates run the saved workflow directly for spee
     ...enabledCeoTools,
     ...(canDelegate ? { spawn_ephemeral_agent: tools.spawn_ephemeral_agent } : {}),
     fetch_crm_lead: tools.fetch_crm_lead,
+    get_workspace_outbound_metrics: tools.get_workspace_outbound_metrics,
     execute_executive_override: tools.execute_executive_override,
     hireSubAgent: tools.hireSubAgent,
     configureAutomatedSequence: tools.configureAutomatedSequence,
