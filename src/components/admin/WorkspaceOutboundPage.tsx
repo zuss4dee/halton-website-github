@@ -71,7 +71,7 @@ export function WorkspaceOutboundPage({ clientId }: WorkspaceOutboundPageProps) 
       </div>
 
       {importStatus?.phase === "processing" ? (
-        <ImportStatusBanner status={importStatus} className="border-amber-300 bg-amber-50" />
+        <ImportStatusBanner status={importStatus} />
       ) : null}
 
       <HumanReviewQueue clientId={clientId} refreshKey={queueRefreshKey} embedded />
