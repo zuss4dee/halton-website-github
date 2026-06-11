@@ -95,6 +95,11 @@ function TelemetryLogPayload({
 
   if (log.event_type === "THOUGHT") {
     const thought = typeof payload.thought === "string" ? payload.thought : "";
+    if (isLatestThought && !isExecuting) {
+      return (
+        <div className="whitespace-pre-wrap leading-relaxed text-gray-100">{thought || "—"}</div>
+      );
+    }
     return (
       <ThoughtLogBlock
         thought={thought}
@@ -197,7 +202,8 @@ function TelemetryLogEntry({
   isExecuting,
 }: TelemetryLogEntryProps) {
   const isThought = log.event_type === "THOUGHT";
-  const canReply = shouldOfferQuickReply(log, agentLabel);
+  const isFinalOutput = isThought && Boolean(isLatestThought && !isExecuting);
+  const canReply = shouldOfferQuickReply(log, agentLabel) || isFinalOutput;
 
   const replyButton =
     canReply && onReplyToPoint ? (
@@ -216,7 +222,11 @@ function TelemetryLogEntry({
         <span className="text-gray-500">{formatLogTimestamp(log.created_at)}</span>
         <span className="font-medium text-white">[{agentLabel}]</span>
         {isThought ? (
-          <span className="text-xs font-normal italic text-gray-500">Reasoning</span>
+          isFinalOutput ? (
+            <span className="font-medium uppercase text-blue-400">OUTPUT</span>
+          ) : (
+            <span className="text-xs font-normal italic text-gray-500">Reasoning</span>
+          )
         ) : (
           <span className={`font-medium uppercase ${eventBadgeClass(log.event_type)}`}>
             {log.event_type}
@@ -224,7 +234,7 @@ function TelemetryLogEntry({
         )}
       </div>
       <div
-        className={`ml-2 mt-1 pl-4 ${isThought ? "border-l border-gray-800" : "border-l border-gray-700 text-gray-300"}`}
+        className={`ml-2 mt-1 pl-4 ${isThought ? "border-l border-gray-800" : "border-l border-gray-700 text-gray-300"} ${isFinalOutput ? "border-l-blue-900/60" : ""}`}
       >
         <TelemetryLogPayload
           log={log}
@@ -238,10 +248,48 @@ function TelemetryLogEntry({
   );
 }
 
+function TerminalResponseEntry({
+  agentLabel,
+  text,
+  onReply,
+}: {
+  agentLabel: string;
+  text: string;
+  onReply?: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 border-b border-gray-800/50 py-3 last:border-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-gray-500">{formatLogTimestamp()}</span>
+        <span className="font-medium text-white">[{agentLabel}]</span>
+        <span className="font-medium uppercase text-blue-400">OUTPUT</span>
+      </div>
+      <div className="ml-2 mt-1 border-l border-gray-700 pl-4 text-gray-100">
+        <div className="whitespace-pre-wrap leading-relaxed">{text}</div>
+        {onReply ? (
+          <button
+            type="button"
+            onClick={onReply}
+            className="mt-2 font-mono text-[10px] tracking-[0.1em] text-gray-500 uppercase transition-colors hover:text-gray-300"
+          >
+            ↳ Reply to this point
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 type TerminalChatProps = {
   clientId: string;
   agents: AgentRosterRow[];
 };
+
+function resolveCeoLabel(ceoAgent: ResolvedAgentRow | null): string {
+  if (ceoAgent?.role) return ceoAgent.role.trim().toUpperCase();
+  if (ceoAgent?.name) return ceoAgent.name.trim().toUpperCase();
+  return "CEO";
+}
 
 export function TerminalChat({ clientId, agents }: TerminalChatProps) {
   const [executionId, setExecutionId] = useState<string | null>(null);
@@ -502,159 +550,174 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
   const latestThoughtLogId = [...visibleLogs]
     .reverse()
     .find((log) => log.event_type === "THOUGHT")?.id;
-  const showTerminal =
-    isExecuting ||
-    visibleLogs.length > 0 ||
-    hiddenPipelineLogCount > 0 ||
-    Boolean(ceoResponse) ||
-    Boolean(executionId);
+  const ceoLabel = resolveCeoLabel(ceoAgent);
+  const responseCapturedInLogs = visibleLogs.some(
+    (log) =>
+      log.event_type === "THOUGHT" &&
+      typeof log.payload?.thought === "string" &&
+      log.payload.thought.trim() === ceoResponse,
+  );
+  const pendingStreamedResponse =
+    ceoResponse && !responseCapturedInLogs ? ceoResponse : null;
 
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [sortedLogs.length, visibleLogs.length, isExecuting, executionId, ceoResponse]);
 
   return (
-    <>
-      <section>
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold text-gray-900">Mission control</h2>
-          <div className="text-sm text-gray-600">
-            {ceoLoading ? (
-              <span>Loading workspace CEO…</span>
-            ) : ceoAgent ? (
-              <span>
-                <span className="font-medium text-gray-900">
-                  {ceoAgent.name ?? "Workspace CEO"}
-                </span>
-                <span className="text-gray-400"> · {ceoAgent.role}</span>
-                {ceoAgent.is_active === false ? (
-                  <span className="text-amber-600"> · offline</span>
-                ) : (
-                  <span className="text-emerald-600"> · online</span>
-                )}
-              </span>
-            ) : (
-              <span className="text-amber-600">No workspace CEO provisioned</span>
-            )}
-          </div>
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold text-gray-900">Mission control</h2>
+        <div className="font-mono text-[11px] tracking-[0.06em] text-gray-500 uppercase">
+          {ceoLoading ? (
+            <span>Loading workspace CEO…</span>
+          ) : ceoAgent ? (
+            <span>
+              <span className="text-gray-700">{ceoAgent.name ?? "Workspace CEO"}</span>
+              <span className="text-gray-400"> · {ceoAgent.role}</span>
+              {ceoAgent.is_active === false ? (
+                <span className="text-amber-600"> · offline</span>
+              ) : (
+                <span className="text-emerald-600"> · online</span>
+              )}
+            </span>
+          ) : (
+            <span className="text-amber-600">No workspace CEO provisioned</span>
+          )}
         </div>
-        {replyContext ? (
-          <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-            Replying to {replyContext.agentLabel} · {replyContext.eventType}
+      </div>
+
+      <div className="flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-[#0a0a0a] shadow-inner">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-800 bg-[#111111] px-3 py-2 font-mono text-[10px] tracking-[0.1em] text-gray-500 uppercase">
+          <span className="inline-flex items-center gap-2 text-gray-400">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${isExecuting ? "animate-pulse bg-amber-400" : "bg-emerald-500"}`}
+              aria-hidden
+            />
+            Workspace console
+          </span>
+          {hiddenPipelineLogCount > 0 ? (
             <button
               type="button"
-              onClick={clearReplyContext}
-              className="ml-3 text-gray-900 transition-colors hover:text-gray-600"
+              onClick={() => setShowPipelineLogs((prev) => !prev)}
+              className="text-gray-500 transition-colors hover:text-gray-300"
             >
-              Clear
+              {showPipelineLogs
+                ? "Hide pipeline logs"
+                : `Pipeline logs (${hiddenPipelineLogCount})`}
             </button>
-          </div>
-        ) : null}
-        <div className="rounded-xl border border-gray-300 bg-white p-2 shadow-sm">
-          <input
-            ref={commandInputRef}
-            type="text"
-            value={command}
-            onChange={(event) => {
-              setCommand(event.target.value);
-              if (
-                replyContext &&
-                !event.target.value.startsWith(buildReplyPrefix(replyContext.agentLabel))
-              ) {
-                setReplyContext(null);
+          ) : null}
+          {executionId ? (
+            <span className="ml-auto truncate text-gray-600 normal-case">{executionId}</span>
+          ) : null}
+        </div>
+
+        <div className="min-h-[22rem] max-h-[28rem] overflow-y-auto px-4 py-2 font-mono text-sm leading-snug text-green-400/90">
+          {visibleLogs.length === 0 && isExecuting ? (
+            <div className="py-3 text-gray-600">&gt; Awaiting telemetry…</div>
+          ) : null}
+          {visibleLogs.length === 0 &&
+          !pendingStreamedResponse &&
+          !isExecuting &&
+          hiddenPipelineLogCount === 0 ? (
+            <div className="py-3 text-gray-600">&gt; Ready — enter a directive below.</div>
+          ) : null}
+          {visibleLogs.length === 0 && !isExecuting && hiddenPipelineLogCount > 0 ? (
+            <div className="py-3 text-gray-600">
+              &gt; Pipeline activity hidden — toggle pipeline logs in the header.
+            </div>
+          ) : null}
+          {visibleLogs.map((log, index) => {
+            const agentLabel = resolveAgentLabel(log.agent_id, agents);
+            return (
+              <TelemetryLogEntry
+                key={log.id ?? `${log.event_type}-${log.created_at ?? index}`}
+                log={log}
+                agentLabel={agentLabel}
+                onReplyToPoint={handleReplyToPoint}
+                isLatestThought={Boolean(latestThoughtLogId && log.id === latestThoughtLogId)}
+                isExecuting={isExecuting}
+              />
+            );
+          })}
+          {pendingStreamedResponse ? (
+            <TerminalResponseEntry
+              agentLabel={ceoLabel}
+              text={pendingStreamedResponse}
+              onReply={() =>
+                handleReplyToPoint({
+                  logId: "streamed-response",
+                  agentLabel: ceoLabel,
+                  eventType: "OUTPUT",
+                  quotedText: pendingStreamedResponse,
+                })
               }
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void handleDispatchMission();
+            />
+          ) : null}
+          {isExecuting ? <ThinkingIndicator /> : null}
+          <div ref={terminalEndRef} aria-hidden="true" />
+        </div>
+
+        <div className="border-t border-gray-800 bg-[#111111]">
+          {replyContext ? (
+            <div className="flex items-center gap-2 border-b border-gray-800/80 px-3 py-1.5 font-mono text-[10px] tracking-[0.08em] text-gray-500 uppercase">
+              <span>
+                Reply · {replyContext.agentLabel} · {replyContext.eventType}
+              </span>
+              <button
+                type="button"
+                onClick={clearReplyContext}
+                className="text-gray-400 transition-colors hover:text-gray-200"
+              >
+                Clear
+              </button>
+            </div>
+          ) : null}
+          <div className="flex items-center gap-2 px-3 py-2.5">
+            <span className="shrink-0 select-none text-emerald-600/80">&gt;</span>
+            <input
+              ref={commandInputRef}
+              type="text"
+              value={command}
+              onChange={(event) => {
+                setCommand(event.target.value);
+                if (
+                  replyContext &&
+                  !event.target.value.startsWith(buildReplyPrefix(replyContext.agentLabel))
+                ) {
+                  setReplyContext(null);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleDispatchMission();
+                }
+                if (event.key === "Escape" && replyContext) {
+                  event.preventDefault();
+                  clearReplyContext();
+                  setCommand("");
+                }
+              }}
+              disabled={isExecuting}
+              placeholder={
+                replyContext
+                  ? "Continue this thread…"
+                  : "Directive for this workspace…"
               }
-              if (event.key === "Escape" && replyContext) {
-                event.preventDefault();
-                clearReplyContext();
-                setCommand("");
-              }
-            }}
-            disabled={isExecuting}
-            placeholder={
-              replyContext
-                ? "Respond to the selected point…"
-                : "Enter mission directive for this workspace…"
-            }
-            className="w-full rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 disabled:opacity-50"
-          />
-          <div className="flex justify-end px-1 pb-1 pt-2">
+              className="min-w-0 flex-1 border-0 bg-transparent font-mono text-sm text-gray-100 placeholder:text-gray-600 focus:outline-none disabled:opacity-50"
+            />
             <button
               type="button"
               onClick={() => void handleDispatchMission()}
               disabled={!command.trim() || isExecuting}
-              className="rounded-lg bg-black px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="shrink-0 border border-gray-700 px-3 py-1 font-mono text-[10px] tracking-[0.12em] text-gray-300 uppercase transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {isExecuting ? "Dispatching…" : "Dispatch"}
+              {isExecuting ? "Running…" : "Run"}
             </button>
           </div>
         </div>
-      </section>
-
-      {showTerminal ? (
-        <section className="mt-4 overflow-hidden rounded-lg border border-gray-800 shadow-inner">
-          {ceoResponse ? (
-            <div className="border-b border-gray-700 bg-gray-950 px-4 py-4">
-              <p className="font-mono text-[10px] tracking-[0.16em] text-emerald-500 uppercase">
-                CEO response
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
-                {ceoResponse}
-              </p>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2 border-b border-gray-700 bg-gray-800 px-4 py-2 text-xs text-gray-400">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-            Live Execution Logs
-            {hiddenPipelineLogCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => setShowPipelineLogs((prev) => !prev)}
-                className="rounded border border-gray-600 px-2 py-0.5 font-mono text-[10px] tracking-[0.08em] text-gray-400 uppercase transition-colors hover:border-gray-500 hover:text-gray-200"
-              >
-                {showPipelineLogs
-                  ? "Hide pipeline logs"
-                  : `Show pipeline logs (${hiddenPipelineLogCount})`}
-              </button>
-            ) : null}
-            {executionId ? (
-              <span className="ml-auto truncate font-mono text-[10px] text-gray-500">
-                {executionId}
-              </span>
-            ) : null}
-          </div>
-          <div className="h-96 overflow-y-auto bg-gray-900 p-4 font-mono text-sm leading-snug text-green-400">
-            {visibleLogs.length === 0 && isExecuting ? (
-              <div className="text-gray-500">&gt; Awaiting telemetry…</div>
-            ) : null}
-            {visibleLogs.length === 0 && !isExecuting && hiddenPipelineLogCount > 0 ? (
-              <div className="text-gray-500">
-                &gt; Pipeline activity hidden — use Show pipeline logs to inspect outbound steps.
-              </div>
-            ) : null}
-            {visibleLogs.map((log, index) => {
-              const agentLabel = resolveAgentLabel(log.agent_id, agents);
-              return (
-                <TelemetryLogEntry
-                  key={log.id ?? `${log.event_type}-${log.created_at ?? index}`}
-                  log={log}
-                  agentLabel={agentLabel}
-                  onReplyToPoint={handleReplyToPoint}
-                  isLatestThought={Boolean(latestThoughtLogId && log.id === latestThoughtLogId)}
-                  isExecuting={isExecuting}
-                />
-              );
-            })}
-            {isExecuting ? <ThinkingIndicator /> : null}
-            <div ref={terminalEndRef} aria-hidden="true" />
-          </div>
-        </section>
-      ) : null}
-    </>
+      </div>
+    </section>
   );
 }

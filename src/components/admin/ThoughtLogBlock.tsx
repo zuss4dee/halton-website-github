@@ -38,11 +38,8 @@ export function ThoughtLogBlock({
 
   return (
     <div className="space-y-2">
-      <details
-        open={defaultOpen}
-        className="group rounded border border-gray-700/40 bg-gray-800/30"
-      >
-        <summary className="cursor-pointer list-none px-2 py-1.5 text-xs text-gray-500 transition-colors hover:text-gray-400 [&::-webkit-details-marker]:hidden">
+      <details open={defaultOpen} className="group">
+        <summary className="cursor-pointer list-none text-xs text-gray-500 transition-colors hover:text-gray-400 [&::-webkit-details-marker]:hidden">
           <span className="inline-flex items-center gap-1.5">
             <span
               className="text-[10px] text-gray-600 transition-transform group-open:rotate-90"
@@ -50,13 +47,13 @@ export function ThoughtLogBlock({
             >
               ▶
             </span>
-            <span className="italic">Thought process</span>
+            <span className="italic">Reasoning</span>
             <span className="hidden truncate text-gray-600 group-open:inline sm:inline">
               · {preview}
             </span>
           </span>
         </summary>
-        <div className="mx-2 mb-2 whitespace-pre-wrap rounded border border-gray-700/50 bg-gray-900/40 p-2 text-xs leading-relaxed text-gray-400">
+        <div className="mt-1 whitespace-pre-wrap pl-3 text-xs leading-relaxed text-gray-500">
           {thought || "—"}
         </div>
       </details>
