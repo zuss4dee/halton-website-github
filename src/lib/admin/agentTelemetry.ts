@@ -18,6 +18,23 @@ export function sortAgentLogs(logs: AgentLogRow[]): AgentLogRow[] {
   });
 }
 
+/** Outbound workflow step logs — hidden from mission control by default. */
+export const OPERATIONAL_PIPELINE_EVENT_TYPES = new Set([
+  "STEP_START",
+  "STEP_COMPLETE",
+  "OUTBOUND_PIPELINE",
+]);
+
+export function isOperationalPipelineLog(log: AgentLogRow): boolean {
+  return OPERATIONAL_PIPELINE_EVENT_TYPES.has(log.event_type);
+}
+
+const MISSION_CONTROL_EVENT_TYPES = new Set(["SPAWN", "THOUGHT", "TOOL_CALL", "TOOL_RESULT"]);
+
+export function isMissionControlLog(log: AgentLogRow): boolean {
+  return MISSION_CONTROL_EVENT_TYPES.has(log.event_type);
+}
+
 export function formatAgentLogLine(log: AgentLogRow): string {
   const payload = log.payload ?? {};
 

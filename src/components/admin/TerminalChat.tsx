@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { sortAgentLogs, type AgentLogRow } from "@/lib/admin/agentTelemetry";
+import { sortAgentLogs, isOperationalPipelineLog, type AgentLogRow } from "@/lib/admin/agentTelemetry";
 import type { AgentRosterRow } from "@/lib/admin/useAgentRoster";
 import {
   buildReplyContext,
@@ -152,6 +152,32 @@ function TelemetryLogPayload({
     );
   }
 
+  if (log.event_type === "OUTBOUND_PIPELINE") {
+    const leadEmail = typeof payload.leadEmail === "string" ? payload.leadEmail : null;
+    const company = typeof payload.company === "string" ? payload.company : null;
+    const halted = payload.haltedAtApprovalGate === true;
+    const steps = Array.isArray(payload.steps) ? payload.steps.length : 0;
+    const label = company ?? leadEmail ?? "lead";
+
+    return (
+      <div className="text-xs text-gray-500">
+        Outbound pipeline · {label} · {steps} step{steps === 1 ? "" : "s"}
+        {halted ? " · halted at approval gate" : ""}
+      </div>
+    );
+  }
+
+  if (log.event_type === "STEP_START" || log.event_type === "STEP_COMPLETE") {
+    const nodeType =
+      typeof payload.nodeType === "string"
+        ? payload.nodeType
+        : typeof payload.nodeId === "string"
+          ? payload.nodeId
+          : "step";
+
+    return <div className="text-xs text-gray-600">{nodeType}</div>;
+  }
+
   return <JsonPre value={payload} />;
 }
 
@@ -225,6 +251,8 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
   const [replyContext, setReplyContext] = useState<TerminalReplyContext | null>(null);
   const [ceoAgent, setCeoAgent] = useState<ResolvedAgentRow | null>(null);
   const [ceoLoading, setCeoLoading] = useState(true);
+  const [ceoResponse, setCeoResponse] = useState<string | null>(null);
+  const [showPipelineLogs, setShowPipelineLogs] = useState(false);
 
   const telemetryChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -269,22 +297,23 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
     let cancelled = false;
 
     const restoreTerminalState = async () => {
-      const { data: latestLog, error: latestError } = await supabase
+      const { data: latestMission, error: latestError } = await supabase
         .from("agent_logs")
         .select("execution_id")
         .eq("client_id", clientId)
+        .in("event_type", ["SPAWN", "THOUGHT"])
         .order("created_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (cancelled || latestError || !latestLog?.execution_id) return;
+      if (cancelled || latestError || !latestMission?.execution_id) return;
 
-      setExecutionId(latestLog.execution_id);
+      setExecutionId(latestMission.execution_id);
 
       const { data: historicalLogs } = await supabase
         .from("agent_logs")
         .select("*")
-        .eq("execution_id", latestLog.execution_id)
+        .eq("execution_id", latestMission.execution_id)
         .order("created_at", { ascending: true });
 
       if (cancelled) return;
@@ -292,6 +321,15 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
       if (historicalLogs) {
         const rows = historicalLogs as AgentLogRow[];
         setTelemetryLogs(rows);
+        const latestThought = [...rows].reverse().find((log) => log.event_type === "THOUGHT");
+        const thought =
+          latestThought?.payload &&
+          typeof latestThought.payload.thought === "string"
+            ? latestThought.payload.thought.trim()
+            : "";
+        if (thought) {
+          setCeoResponse(thought);
+        }
         for (const log of rows) {
           emitAgentActivityForLog(log, agents);
         }
@@ -391,6 +429,7 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
     if (!activeReply) {
       setTelemetryLogs([]);
       setExecutionId(null);
+      setCeoResponse(null);
     }
 
     try {
@@ -441,6 +480,10 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
           if (data.executionId) {
             setExecutionId(data.executionId);
           }
+
+          if (typeof data.text === "string" && data.text.trim()) {
+            setCeoResponse(data.text.trim());
+          }
         }
       }
     } catch (error) {
@@ -452,12 +495,23 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
   }, [clientId, command, isExecuting, replyContext]);
 
   const sortedLogs = sortAgentLogs(telemetryLogs);
-  const latestThoughtLogId = [...sortedLogs].reverse().find((log) => log.event_type === "THOUGHT")?.id;
-  const showTerminal = isExecuting || sortedLogs.length > 0 || Boolean(executionId);
+  const hiddenPipelineLogCount = sortedLogs.filter(isOperationalPipelineLog).length;
+  const visibleLogs = showPipelineLogs
+    ? sortedLogs
+    : sortedLogs.filter((log) => !isOperationalPipelineLog(log));
+  const latestThoughtLogId = [...visibleLogs]
+    .reverse()
+    .find((log) => log.event_type === "THOUGHT")?.id;
+  const showTerminal =
+    isExecuting ||
+    visibleLogs.length > 0 ||
+    hiddenPipelineLogCount > 0 ||
+    Boolean(ceoResponse) ||
+    Boolean(executionId);
 
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [sortedLogs.length, isExecuting, executionId]);
+  }, [sortedLogs.length, visibleLogs.length, isExecuting, executionId, ceoResponse]);
 
   return (
     <>
@@ -544,9 +598,30 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
 
       {showTerminal ? (
         <section className="mt-4 overflow-hidden rounded-lg border border-gray-800 shadow-inner">
-          <div className="flex items-center gap-2 border-b border-gray-700 bg-gray-800 px-4 py-2 text-xs text-gray-400">
+          {ceoResponse ? (
+            <div className="border-b border-gray-700 bg-gray-950 px-4 py-4">
+              <p className="font-mono text-[10px] tracking-[0.16em] text-emerald-500 uppercase">
+                CEO response
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
+                {ceoResponse}
+              </p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2 border-b border-gray-700 bg-gray-800 px-4 py-2 text-xs text-gray-400">
             <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
             Live Execution Logs
+            {hiddenPipelineLogCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowPipelineLogs((prev) => !prev)}
+                className="rounded border border-gray-600 px-2 py-0.5 font-mono text-[10px] tracking-[0.08em] text-gray-400 uppercase transition-colors hover:border-gray-500 hover:text-gray-200"
+              >
+                {showPipelineLogs
+                  ? "Hide pipeline logs"
+                  : `Show pipeline logs (${hiddenPipelineLogCount})`}
+              </button>
+            ) : null}
             {executionId ? (
               <span className="ml-auto truncate font-mono text-[10px] text-gray-500">
                 {executionId}
@@ -554,10 +629,15 @@ export function TerminalChat({ clientId, agents }: TerminalChatProps) {
             ) : null}
           </div>
           <div className="h-96 overflow-y-auto bg-gray-900 p-4 font-mono text-sm leading-snug text-green-400">
-            {sortedLogs.length === 0 && isExecuting ? (
+            {visibleLogs.length === 0 && isExecuting ? (
               <div className="text-gray-500">&gt; Awaiting telemetry…</div>
             ) : null}
-            {sortedLogs.map((log, index) => {
+            {visibleLogs.length === 0 && !isExecuting && hiddenPipelineLogCount > 0 ? (
+              <div className="text-gray-500">
+                &gt; Pipeline activity hidden — use Show pipeline logs to inspect outbound steps.
+              </div>
+            ) : null}
+            {visibleLogs.map((log, index) => {
               const agentLabel = resolveAgentLabel(log.agent_id, agents);
               return (
                 <TelemetryLogEntry

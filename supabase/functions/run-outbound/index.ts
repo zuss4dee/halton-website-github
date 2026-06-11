@@ -1694,6 +1694,7 @@ serve(async (req) => {
         const { error: leadUpdateError } = await supabaseAdmin
           .from("leads")
           .update({
+            status: "contacted",
             queue_status: "sent",
             campaign_status: "SENT",
             generated_copy: appendOutboundFounderSignature(personalizedEmail.body),

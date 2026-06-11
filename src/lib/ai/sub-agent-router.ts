@@ -360,16 +360,16 @@ export async function executeDynamicAgent(
     return response.text;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Sub-agent execution failed.";
-    await supabase
-      .from("agent_logs")
-      .insert({
-        execution_id: executionId,
-        client_id: clientId,
-        agent_id: logAgentId,
-        event_type: "TOOL_RESULT",
-        payload: { status: "ERROR", action: "SUB_AGENT_EXECUTION", message },
-      })
-      .catch(() => undefined);
+    const { error: logError } = await supabase.from("agent_logs").insert({
+      execution_id: executionId,
+      client_id: clientId,
+      agent_id: logAgentId,
+      event_type: "TOOL_RESULT",
+      payload: { status: "ERROR", action: "SUB_AGENT_EXECUTION", message },
+    });
+    if (logError) {
+      console.error("[sub-agent-router] Failed to log sub-agent execution error:", logError);
+    }
     throw new Error(message);
   }
 }

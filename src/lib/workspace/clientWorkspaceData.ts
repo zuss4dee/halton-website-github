@@ -6,7 +6,7 @@ import {
 import type { ClientRow, LeadRow } from "@/lib/admin/leadsRepository";
 import {
   formatReplyRate,
-  REPLIED_PIPELINE_STATUSES,
+  REPLY_ANALYTICS_STATUSES,
 } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
@@ -93,7 +93,7 @@ export async function fetchClientWorkspaceData(
       .from("leads")
       .select("*", { count: "exact", head: true })
       .eq("client_id", clientId)
-      .in("status", [...REPLIED_PIPELINE_STATUSES]),
+      .in("status", [...REPLY_ANALYTICS_STATUSES]),
     supabase
       .from("leads")
       .select("*")

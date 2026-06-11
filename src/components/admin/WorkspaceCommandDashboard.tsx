@@ -17,9 +17,9 @@ import {
 import {
   ACTIVE_OUTBOUND_QUEUE_STATUSES,
   formatReplyRate,
-  HUMAN_REVIEW_QUEUE_STATUSES,
   LEAD_QUEUE_STATUS,
-  REPLIED_PIPELINE_STATUSES,
+  PENDING_APPROVAL_QUEUE_STATUSES,
+  REPLY_ANALYTICS_STATUSES,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
@@ -104,7 +104,7 @@ export function WorkspaceCommandDashboard({
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId)
-        .in("queue_status", [...HUMAN_REVIEW_QUEUE_STATUSES]),
+        .in("queue_status", [...PENDING_APPROVAL_QUEUE_STATUSES]),
       supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
@@ -119,7 +119,7 @@ export function WorkspaceCommandDashboard({
         .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId)
-        .in("status", [...REPLIED_PIPELINE_STATUSES]),
+        .eq("status", "replied"),
       supabase
         .from("agent_logs")
         .select("*", { count: "exact", head: true })
