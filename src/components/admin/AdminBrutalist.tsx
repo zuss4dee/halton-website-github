@@ -38,13 +38,21 @@ export function AdminPageHeader({ code, title, description, trailing }: AdminPag
 type AdminKpiCardProps = {
   label: string;
   value: string;
+  hint?: string;
   isLoading?: boolean;
 };
 
-export function AdminKpiCard({ label, value, isLoading }: AdminKpiCardProps) {
+export function AdminKpiCard({ label, value, hint, isLoading }: AdminKpiCardProps) {
   return (
     <div className="flex min-h-[140px] flex-col justify-between border-t border-hairline py-1 md:border-t-0 md:border-l md:pl-6 first:md:border-l-0 first:md:pl-0">
-      <p className="font-mono text-[10px] tracking-[0.26em] text-ink/45 uppercase">{label}</p>
+      <div>
+        <p className="font-mono text-[10px] tracking-[0.26em] text-ink/45 uppercase">{label}</p>
+        {hint ? (
+          <p className="mt-1 max-w-[16ch] font-mono text-[9px] leading-relaxed tracking-[0.08em] text-ink/35 uppercase">
+            {hint}
+          </p>
+        ) : null}
+      </div>
       <p className="font-display text-[clamp(2.5rem,8vw,4.5rem)] leading-[0.85] tracking-[-0.05em] text-ink tabular-nums">
         {isLoading ? "—" : value}
       </p>

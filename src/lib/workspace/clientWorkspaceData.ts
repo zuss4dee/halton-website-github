@@ -4,10 +4,8 @@ import {
   truncateReplyPreview,
 } from "@/lib/admin/inboundReply";
 import type { ClientRow, LeadRow } from "@/lib/admin/leadsRepository";
-import {
-  formatReplyRate,
-  REPLY_ANALYTICS_STATUSES,
-} from "@/lib/admin/leadsRepository";
+import { countLeadsWithInboundReply, fetchLeadsWithInboundReplies } from "@/lib/admin/inboundReplyAnalytics";
+import { formatReplyRate } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
 
 const UUID_PATTERN =
@@ -83,35 +81,23 @@ export async function fetchClientWorkspaceData(
 
   const clientId = client.id;
 
-  const [sentRes, repliedRes, leadsRes] = await Promise.all([
+  const [sentRes, leadsRes] = await Promise.all([
     supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
       .eq("client_id", clientId)
       .not("sent_at", "is", null),
-    supabase
-      .from("leads")
-      .select("*", { count: "exact", head: true })
-      .eq("client_id", clientId)
-      .in("status", [...REPLY_ANALYTICS_STATUSES]),
-    supabase
-      .from("leads")
-      .select("*")
-      .eq("client_id", clientId)
-      .eq("status", "replied")
-      .order("last_activity", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false }),
+    fetchLeadsWithInboundReplies(supabase, clientId),
   ]);
 
+  const totalReplies = await countLeadsWithInboundReply(supabase, clientId);
+
   if (sentRes.error) console.error("[workspace] sent count:", sentRes.error);
-  if (repliedRes.error) console.error("[workspace] replied count:", repliedRes.error);
-  if (leadsRes.error) console.error("[workspace] replied leads:", leadsRes.error);
 
   const emailsSent = sentRes.count ?? 0;
-  const totalReplies = repliedRes.count ?? 0;
   const openRate = formatOpenRate(totalReplies, emailsSent);
 
-  const leads = (leadsRes.data as LeadRow[]) ?? [];
+  const leads = leadsRes;
   const leadIds = leads.map((lead) => lead.id).filter(Boolean);
 
   const replyPreviewByLeadId: Record<string, string> = {};

@@ -15,11 +15,14 @@ import {
   truncateReplyPreview,
 } from "@/lib/admin/inboundReply";
 import {
+  countLeadsWithInboundReply,
+  fetchLeadsWithInboundReplies,
+} from "@/lib/admin/inboundReplyAnalytics";
+import {
   ACTIVE_OUTBOUND_QUEUE_STATUSES,
   formatReplyRate,
   LEAD_QUEUE_STATUS,
   PENDING_APPROVAL_QUEUE_STATUSES,
-  REPLY_ANALYTICS_STATUSES,
   type LeadRow,
 } from "@/lib/admin/leadsRepository";
 import { supabase } from "@/lib/supabase";
@@ -95,7 +98,7 @@ export function WorkspaceCommandDashboard({
   const fetchMetrics = useCallback(async () => {
     setMetrics((prev) => ({ ...prev, isLoading: true }));
 
-    const [leads, pending, emailsSent, activeOutbound, replied, agentOps] = await Promise.all([
+    const [leads, pending, emailsSent, activeOutbound, agentOps] = await Promise.all([
       supabase
         .from("leads")
         .select("*", { count: "exact", head: true })
@@ -116,21 +119,17 @@ export function WorkspaceCommandDashboard({
         .eq("client_id", clientId)
         .in("queue_status", [...ACTIVE_OUTBOUND_QUEUE_STATUSES]),
       supabase
-        .from("leads")
-        .select("*", { count: "exact", head: true })
-        .eq("client_id", clientId)
-        .eq("status", "replied"),
-      supabase
         .from("agent_logs")
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId),
     ]);
 
+    const repliedCount = await countLeadsWithInboundReply(supabase, clientId);
+
     if (leads.error) console.error("DASHBOARD leads count:", leads.error);
     if (pending.error) console.error("DASHBOARD pending count:", pending.error);
     if (emailsSent.error) console.error("DASHBOARD emails sent count:", emailsSent.error);
     if (activeOutbound.error) console.error("DASHBOARD active outbound count:", activeOutbound.error);
-    if (replied.error) console.error("DASHBOARD replied count:", replied.error);
     if (agentOps.error) console.error("DASHBOARD agent_logs count:", agentOps.error);
 
     setMetrics({
@@ -138,7 +137,7 @@ export function WorkspaceCommandDashboard({
       pendingReview: pending.count ?? 0,
       emailsSent: emailsSent.count ?? 0,
       activeOutbound: activeOutbound.count ?? 0,
-      repliedLeads: replied.count ?? 0,
+      repliedLeads: repliedCount,
       totalAgentOps: agentOps.count ?? 0,
       isLoading: false,
     });
@@ -147,45 +146,32 @@ export function WorkspaceCommandDashboard({
   const fetchHighIntentLeads = useCallback(async () => {
     setIsLeadsLoading(true);
 
-    const { data, error } = await supabase
-      .from("leads")
-      .select("*")
-      .eq("client_id", clientId)
-      .eq("status", "replied")
-      .order("last_activity", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false });
+    const leads = await fetchLeadsWithInboundReplies(supabase, clientId);
 
-    if (error) {
-      console.error("DASHBOARD high-intent leads:", error);
-      setHighIntentLeads([]);
+    setHighIntentLeads(leads);
+
+    const leadIds = leads.map((row) => row.id).filter(Boolean);
+    if (leadIds.length === 0) {
       setReplyPreviewByLeadId({});
     } else {
-      const leads = (data as LeadRow[]) ?? [];
-      setHighIntentLeads(leads);
+      const { data: replies, error: repliesError } = await supabase
+        .from("replies")
+        .select("lead_id, text, created_at")
+        .in("lead_id", leadIds)
+        .order("created_at", { ascending: false });
 
-      const leadIds = leads.map((row) => row.id).filter(Boolean);
-      if (leadIds.length === 0) {
+      if (repliesError) {
+        console.error("DASHBOARD reply previews:", repliesError);
         setReplyPreviewByLeadId({});
       } else {
-        const { data: replies, error: repliesError } = await supabase
-          .from("replies")
-          .select("lead_id, text, created_at")
-          .in("lead_id", leadIds)
-          .order("created_at", { ascending: false });
-
-        if (repliesError) {
-          console.error("DASHBOARD reply previews:", repliesError);
-          setReplyPreviewByLeadId({});
-        } else {
-          const previewMap: Record<string, string> = {};
-          for (const row of replies ?? []) {
-            const leadId = row.lead_id as string;
-            if (!leadId || previewMap[leadId]) continue;
-            const text = typeof row.text === "string" ? row.text.trim() : "";
-            if (text) previewMap[leadId] = text;
-          }
-          setReplyPreviewByLeadId(previewMap);
+        const previewMap: Record<string, string> = {};
+        for (const row of replies ?? []) {
+          const leadId = row.lead_id as string;
+          if (!leadId || previewMap[leadId]) continue;
+          const text = typeof row.text === "string" ? row.text.trim() : "";
+          if (text) previewMap[leadId] = text;
         }
+        setReplyPreviewByLeadId(previewMap);
       }
     }
 
@@ -243,6 +229,7 @@ export function WorkspaceCommandDashboard({
         />
         <AdminKpiCard
           label="Awaiting Reply"
+          hint="Sent · no inbound reply yet"
           value={metrics.activeOutbound.toLocaleString()}
           isLoading={metrics.isLoading}
         />
@@ -257,7 +244,8 @@ export function WorkspaceCommandDashboard({
           isLoading={metrics.isLoading}
         />
         <AdminKpiCard
-          label="Replied Leads"
+          label="Inbox Replies"
+          hint="Prospects who replied"
           value={metrics.repliedLeads.toLocaleString()}
           isLoading={metrics.isLoading}
         />
