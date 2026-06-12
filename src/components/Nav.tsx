@@ -1,15 +1,19 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useEffect, useState } from "react";
 import { CtaButton } from "./CtaButton";
 import { MobileNav } from "./MobileNav";
 import { NavLink } from "./NavLink";
-import { CAL_DISCOVERY_URL, MARKETING_NAV } from "@/lib/siteLinks";
+import { CAL_DISCOVERY_URL, MARKETING_NAV, TALLY_QUALIFY_URL } from "@/lib/siteLinks";
 
 export function Nav() {
   const [time, setTime] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const onConsulting = pathname.startsWith("/consulting");
+  const desktopCtaLabel = onConsulting ? "Book an Audit" : "See If You Qualify";
+  const desktopCtaHref = onConsulting ? CAL_DISCOVERY_URL : TALLY_QUALIFY_URL;
   const { scrollY } = useScroll();
 
   useMotionValueEvent(scrollY, "change", (latest) => {
@@ -48,7 +52,7 @@ export function Nav() {
           scrolled ? "text-ink" : "text-ink md:text-paper"
         }`}
       >
-        <Link to="/" className="flex min-h-11 min-w-0 flex-1 items-center gap-3 touch-target sm:flex-none">
+        <Link to="/" className="flex min-h-11 min-w-0 shrink items-center gap-2.5 touch-target max-w-[calc(100%-3.5rem)] sm:gap-3 sm:max-w-none">
           <motion.svg
             width="22"
             height="22"
@@ -73,38 +77,19 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <div className="font-mono text-[10px] sm:text-[11px] tracking-[0.18em] uppercase hidden xl:block tabular-nums opacity-70">
             {time || "00:00:00 UTC"}
           </div>
 
-          <motion.div
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.45, ease: [0.77, 0, 0.175, 1] }}
-            className="nav-cta-wrap mix-blend-normal"
-          >
+          <div className="hidden md:block nav-cta-wrap mix-blend-normal">
             <CtaButton
-              label="Book an Audit"
-              href={CAL_DISCOVERY_URL}
-              className="hidden md:inline-flex cta--nav"
+              label={desktopCtaLabel}
+              href={desktopCtaHref}
+              className="cta--nav"
               animateEntrance
             />
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 8 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.5, ease: [0.77, 0, 0.175, 1] }}
-            className="md:hidden nav-cta-wrap mix-blend-normal"
-          >
-            <CtaButton
-              label="Audit"
-              href={CAL_DISCOVERY_URL}
-              className="cta--nav-mobile"
-              animateEntrance
-            />
-          </motion.div>
+          </div>
 
           <MobileNav open={mobileOpen} onOpenChange={setMobileOpen} scrolled={scrolled} />
         </div>

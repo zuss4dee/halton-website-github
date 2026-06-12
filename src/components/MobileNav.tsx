@@ -3,7 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { CtaButton } from "./CtaButton";
-import { CAL_DISCOVERY_URL, MARKETING_NAV } from "@/lib/siteLinks";
+import { CAL_DISCOVERY_URL, MARKETING_NAV, TALLY_QUALIFY_URL } from "@/lib/siteLinks";
 
 type MobileNavProps = {
   open: boolean;
@@ -14,6 +14,9 @@ type MobileNavProps = {
 export function MobileNav({ open, onOpenChange, scrolled = false }: MobileNavProps) {
   const [mounted, setMounted] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const onConsulting = pathname.startsWith("/consulting");
+  const mobileCtaLabel = onConsulting ? "Book an Audit" : "See If You Qualify";
+  const mobileCtaHref = onConsulting ? CAL_DISCOVERY_URL : TALLY_QUALIFY_URL;
 
   const close = () => onOpenChange(false);
 
@@ -112,8 +115,8 @@ export function MobileNav({ open, onOpenChange, scrolled = false }: MobileNavPro
                 className="mt-8"
               >
                 <CtaButton
-                  label="Book an Audit"
-                  href={CAL_DISCOVERY_URL}
+                  label={mobileCtaLabel}
+                  href={mobileCtaHref}
                   className="cta--mobile-menu w-full justify-center"
                 />
               </motion.div>
