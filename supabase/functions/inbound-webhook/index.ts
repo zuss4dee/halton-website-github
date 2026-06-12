@@ -9,6 +9,11 @@ const corsHeaders = {
 };
 
 import { classifyReplyIntent } from "../_shared/replyIntent.ts";
+import {
+  buildNotionReplyPageChildren,
+  buildNotionReplyParagraphBlock,
+  splitInboundEmailReply,
+} from "../_shared/emailReplyParse.ts";
 
 /** Must match Notion column names exactly — including spaces/casing. */
 const NOTION_COLUMNS = {
@@ -175,6 +180,64 @@ async function logNotionSchemaForDebug(
   }
 }
 
+async function appendNotionBlockChildren(
+  blockId: string,
+  children: Record<string, unknown>[],
+  apiKey: string,
+): Promise<boolean> {
+  if (!children.length) return true;
+
+  const response = await fetch(`https://api.notion.com/v1/blocks/${blockId}/children`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Notion-Version": "2022-06-28",
+    },
+    body: JSON.stringify({ children }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    console.error("[inbound-webhook] Notion append block children failed:", response.status, body);
+    return false;
+  }
+
+  return true;
+}
+
+async function findNotionThreadHistoryToggleBlockId(
+  pageId: string,
+  apiKey: string,
+): Promise<string | null> {
+  const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Notion-Version": "2022-06-28",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    console.error("[inbound-webhook] Notion list page blocks failed:", response.status, body);
+    return null;
+  }
+
+  const payload = (await response.json()) as {
+    results?: Array<{ id?: string; type?: string; toggle?: { rich_text?: Array<{ plain_text?: string }> } }>;
+  };
+
+  for (const block of payload.results ?? []) {
+    if (block.type !== "toggle") continue;
+    const heading = block.toggle?.rich_text?.[0]?.plain_text?.trim();
+    if (heading === "View Full Email Thread History" && block.id) {
+      return block.id;
+    }
+  }
+
+  return null;
+}
+
 async function createNotionHotLeadEntry(input: {
   prospectEmail: string;
   replyText: string;
@@ -190,10 +253,11 @@ async function createNotionHotLeadEntry(input: {
   }
 
   const fromEmail = input.prospectEmail;
-  const emailBody = input.replyText;
+  const { freshReply, threadHistory } = splitInboundEmailReply(input.replyText);
+  const pageChildren = buildNotionReplyPageChildren(freshReply, threadHistory);
 
-  const notionData = {
-    parent: { database_id: Deno.env.get("NOTION_DATABASE_ID") },
+  const notionData: Record<string, unknown> = {
+    parent: { database_id: notionDatabaseId },
     properties: {
       [NOTION_COLUMNS.EMAIL]: {
         email: fromEmail,
@@ -202,7 +266,7 @@ async function createNotionHotLeadEntry(input: {
         status: { name: "Replied" },
       },
       [NOTION_COLUMNS.COMPANY]: {
-        rich_text: [{ text: { content: emailBody.substring(0, 2000) } }],
+        rich_text: [{ text: { content: freshReply.substring(0, 2000) } }],
       },
       [NOTION_COLUMNS.LEAD_NAME]: {
         title: [{ text: { content: fromEmail } }],
@@ -210,10 +274,14 @@ async function createNotionHotLeadEntry(input: {
     },
   };
 
+  if (pageChildren.length) {
+    notionData.children = pageChildren;
+  }
+
   const notionResponse = await fetch("https://api.notion.com/v1/pages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${Deno.env.get("NOTION_API_KEY")}`,
+      Authorization: `Bearer ${notionApiKey}`,
       "Content-Type": "application/json",
       "Notion-Version": "2022-06-28",
     },
@@ -227,9 +295,25 @@ async function createNotionHotLeadEntry(input: {
     await logNotionSchemaForDebug(
       notionDatabaseId,
       notionApiKey,
-      Object.keys(notionData.properties),
+      Object.keys(notionData.properties as Record<string, unknown>),
     );
     return null;
+  }
+
+  const pageId =
+    typeof notionResult === "object" && notionResult !== null && "id" in notionResult
+      ? String((notionResult as { id: string }).id)
+      : null;
+
+  if (pageId && threadHistory.trim()) {
+    const toggleBlockId = await findNotionThreadHistoryToggleBlockId(pageId, notionApiKey);
+    if (toggleBlockId) {
+      await appendNotionBlockChildren(
+        toggleBlockId,
+        [buildNotionReplyParagraphBlock(threadHistory)],
+        notionApiKey,
+      );
+    }
   }
 
   const pageUrl =
@@ -350,6 +434,7 @@ serve(async (req) => {
     let lead: LeadMatch | null = null;
     let isHotLead = false;
     let replyText = "";
+    let rawReplyText = "";
     let clientWebhook: string | null = null;
     let replyIntentSource = "none";
     let replyIntentLabel = "unknown";
@@ -364,9 +449,10 @@ serve(async (req) => {
         email: "adedamilare1@gmail.com",
         prospect_name: null,
       };
-      replyText =
+      rawReplyText =
         (await resolveReplyText(payload, platformResendKey)) ||
         "Brute force test — I'd like to book a meeting this week.";
+      replyText = splitInboundEmailReply(rawReplyText).freshReply || rawReplyText;
       console.warn("[inbound-webhook] TEMPORARY_BYPASS active — skipping DB lookup and writes");
     } else {
       const { data: fetchedLead, error: leadError } = await supabaseAdmin
@@ -410,9 +496,9 @@ serve(async (req) => {
         deepseekApiKey = client?.deepseek_api_key ?? null;
       }
 
-      replyText = await resolveReplyText(payload, resendApiKey);
+      rawReplyText = await resolveReplyText(payload, resendApiKey);
 
-      if (!replyText) {
+      if (!rawReplyText) {
         return jsonResponse({
           success: false,
           matched: true,
@@ -420,6 +506,8 @@ serve(async (req) => {
           error: "Reply text is empty; include text in payload or configure RESEND_API_KEY for email.received fetch",
         }, 422);
       }
+
+      replyText = splitInboundEmailReply(rawReplyText).freshReply || rawReplyText;
 
       const intent = await classifyReplyIntent(replyText, deepseekApiKey);
       isHotLead = intent.isHotLead;
@@ -505,7 +593,7 @@ serve(async (req) => {
 
       notionPageUrl = await createNotionHotLeadEntry({
         prospectEmail: fromEmail,
-        replyText,
+        replyText: rawReplyText || replyText,
       });
     }
 
