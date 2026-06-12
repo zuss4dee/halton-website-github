@@ -28,9 +28,12 @@ export function Footer() {
           <a href="#thesis" className="hover:text-ink transition-colors inline-flex min-h-11 items-center">
             Thesis
           </a>
-          <a href="#stack" className="hover:text-ink transition-colors inline-flex min-h-11 items-center">
+          <a href="/#stack" className="hover:text-ink transition-colors inline-flex min-h-11 items-center">
             Stack
           </a>
+          <Link to="/consulting" className="hover:text-ink transition-colors inline-flex min-h-11 items-center">
+            Operations
+          </Link>
           <a href="#engagements" className="hover:text-ink transition-colors inline-flex min-h-11 items-center">
             Fit
           </a>

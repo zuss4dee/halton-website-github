@@ -13,6 +13,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CookiesRouteImport } from './routes/cookies'
+import { Route as ConsultingRouteImport } from './routes/consulting'
 import { Route as WorkspaceRouteRouteImport } from './routes/workspace/route'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -71,6 +72,11 @@ const LoginRoute = LoginRouteImport.update({
 const CookiesRoute = CookiesRouteImport.update({
   id: '/cookies',
   path: '/cookies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsultingRoute = ConsultingRouteImport.update({
+  id: '/consulting',
+  path: '/consulting',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WorkspaceRouteRoute = WorkspaceRouteRouteImport.update({
@@ -277,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
+  '/consulting': typeof ConsultingRoute
   '/cookies': typeof CookiesRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
@@ -320,6 +327,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/consulting': typeof ConsultingRoute
   '/cookies': typeof CookiesRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
@@ -365,6 +373,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
+  '/consulting': typeof ConsultingRoute
   '/cookies': typeof CookiesRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
@@ -412,6 +421,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/workspace'
+    | '/consulting'
     | '/cookies'
     | '/login'
     | '/privacy'
@@ -455,6 +465,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/consulting'
     | '/cookies'
     | '/login'
     | '/privacy'
@@ -499,6 +510,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/workspace'
+    | '/consulting'
     | '/cookies'
     | '/login'
     | '/privacy'
@@ -545,6 +557,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   WorkspaceRouteRoute: typeof WorkspaceRouteRouteWithChildren
+  ConsultingRoute: typeof ConsultingRoute
   CookiesRoute: typeof CookiesRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -588,6 +601,13 @@ declare module '@tanstack/react-router' {
       path: '/cookies'
       fullPath: '/cookies'
       preLoaderRoute: typeof CookiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consulting': {
+      id: '/consulting'
+      path: '/consulting'
+      fullPath: '/consulting'
+      preLoaderRoute: typeof ConsultingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/workspace': {
@@ -954,6 +974,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   WorkspaceRouteRoute: WorkspaceRouteRouteWithChildren,
+  ConsultingRoute: ConsultingRoute,
   CookiesRoute: CookiesRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
